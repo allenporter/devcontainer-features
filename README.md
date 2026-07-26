@@ -24,10 +24,12 @@ Installs and launches the Google Antigravity 2.0 `language_server` daemon inside
 
 ---
 
-## 🛠️ Testing Locally
+## 📦 Publishing Updates to Zot Registry
 
-To test feature installation locally:
+Publish features directly from your local machine to the internal Zot registry:
 
 ```bash
-npx @devcontainers/cli features test -f antigravity
+npx @devcontainers/cli features publish ./src/antigravity \
+  --registry zot.mrv.thebends.org \
+  --namespace devcontainers
 ```
