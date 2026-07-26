@@ -17,6 +17,15 @@ rm -rf /var/lib/apt/lists/*
 echo "Running official Antigravity installer..."
 curl -fsSL https://antigravity.google/install.sh | bash
 
+# Ensure language_server is available globally in /usr/local/bin for non-root users
+if [ -f /root/.gemini/antigravity/bin/language_server ]; then
+    cp /root/.gemini/antigravity/bin/language_server /usr/local/bin/language_server
+    chmod 755 /usr/local/bin/language_server
+elif [ -f ~/.gemini/antigravity/bin/language_server ]; then
+    cp ~/.gemini/antigravity/bin/language_server /usr/local/bin/language_server
+    chmod 755 /usr/local/bin/language_server
+fi
+
 # Create headless xdg-open OAuth handler
 cat << 'EOF' > /usr/local/bin/xdg-open
 #!/bin/bash
@@ -44,7 +53,7 @@ sleep 1
 
 export PATH="/usr/local/bin:\${USER_HOME}/.gemini/antigravity/bin:\$PATH"
 
-nohup language_server \
+nohup /usr/local/bin/language_server \
   --standalone \
   --override_ide_name antigravity \
   --subclient_type hub \
