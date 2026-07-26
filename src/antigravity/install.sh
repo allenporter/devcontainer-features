@@ -35,9 +35,39 @@ cat << 'EOF' > /usr/local/bin/xdg-open
 TARGET_USER="${REMOTE_USER:-vscode}"
 USER_HOME=$(eval echo "~${TARGET_USER}")
 mkdir -p "${USER_HOME}/.gemini/antigravity"
-echo "AUTH_URL: $@" >> "${USER_HOME}/.gemini/antigravity/auth_urls.log"
+
+URL_LINE="$@"
+echo "AUTH_URL: ${URL_LINE}" >> "${USER_HOME}/.gemini/antigravity/auth_urls.log"
+echo "${URL_LINE}" > /tmp/antigravity-auth.url
+
+# Print prominently to stdout/stderr if run from interactive terminal or log stream
+echo "" >&2
+echo "==========================================================================" >&2
+echo "🔑 ANTIGRAVITY OAUTH URL DETECTED:" >&2
+echo "${URL_LINE}" >&2
+echo "==========================================================================" >&2
+echo "" >&2
 EOF
 chmod +x /usr/local/bin/xdg-open
+
+# Create easy agy-auth helper script
+cat << 'EOF' > /usr/local/bin/agy-auth
+#!/bin/bash
+TARGET_USER="${REMOTE_USER:-vscode}"
+USER_HOME=$(eval echo "~${TARGET_USER}")
+
+if [ -f "${USER_HOME}/.gemini/antigravity/auth_urls.log" ]; then
+    echo "=========================================================================="
+    echo "🔑 Latest Antigravity OAuth URL:"
+    echo "=========================================================================="
+    tail -n 1 "${USER_HOME}/.gemini/antigravity/auth_urls.log" | sed 's/^AUTH_URL: //'
+    echo "=========================================================================="
+else
+    echo "No OAuth URL logged yet. Open http://127.0.0.1:43635/ in your browser and click Sign In."
+fi
+EOF
+chmod +x /usr/local/bin/agy-auth
+ln -sf /usr/local/bin/agy-auth /usr/local/bin/antigravity-auth
 
 # Create start-antigravity daemon launcher
 cat << EOF > /usr/local/bin/start-antigravity
@@ -63,13 +93,14 @@ nohup /usr/local/bin/language_server \
   --override_ide_version 2.4.2 \
   --override_user_agent_name antigravity \
   --https_server_port "${PORT}" \
+  --http_server_port 43635 \
   --csrf_token devcontainer-secret \
   --app_data_dir antigravity \
   --api_server_url https://generativelanguage.googleapis.com \
   --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com \
   --enable_sidecars > "\${USER_HOME}/.gemini/antigravity/language_server.log" 2>&1 &
 
-echo "Antigravity language_server daemon started on port ${PORT} (PID \$!)"
+echo "Antigravity language_server daemon started on HTTPS port ${PORT} and HTTP port 43635 (PID \$!)"
 EOF
 chmod +x /usr/local/bin/start-antigravity
 
