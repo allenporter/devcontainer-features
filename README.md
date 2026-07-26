@@ -1,6 +1,6 @@
 # Custom DevContainer Features
 
-Repository for custom DevContainer Features published to the Zot OCI registry (`zot.mrv.thebends.org`).
+Repository for custom DevContainer Features published to the internal Zot OCI registry (`registry.k8s.mrv.thebends.org`).
 
 ---
 
@@ -16,7 +16,7 @@ Installs and launches the Google Antigravity 2.0 `language_server` daemon inside
   "name": "My Workspace",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
   "features": {
-    "zot.mrv.thebends.org/devcontainers/antigravity:1": {}
+    "registry.k8s.mrv.thebends.org/devcontainers/antigravity:1": {}
   },
   "postStartCommand": "/usr/local/bin/start-antigravity"
 }
@@ -26,10 +26,10 @@ Installs and launches the Google Antigravity 2.0 `language_server` daemon inside
 
 ## 📦 Publishing Updates to Zot Registry
 
-Publish features directly from your local machine to the internal Zot registry:
+To publish feature updates to the Zot OCI registry:
 
 ```bash
 npx @devcontainers/cli features publish ./src/antigravity \
-  --registry zot.mrv.thebends.org \
+  --registry registry.k8s.mrv.thebends.org \
   --namespace devcontainers
 ```
