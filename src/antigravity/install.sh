@@ -79,6 +79,12 @@ TARGET_USER="\${REMOTE_USER:-vscode}"
 USER_HOME=\$(eval echo "~\${TARGET_USER}")
 mkdir -p "\${USER_HOME}/.gemini/antigravity"
 
+# Automatically create host path symlinks so host file:/// links resolve seamlessly inside Linux
+if [ -n "\$LOCAL_WORKSPACE_FOLDER" ] && [ ! -d "\$LOCAL_WORKSPACE_FOLDER" ]; then
+    mkdir -p "\$(dirname "\$LOCAL_WORKSPACE_FOLDER")"
+    ln -sf "/workspaces/\$(basename "\$LOCAL_WORKSPACE_FOLDER")" "\$LOCAL_WORKSPACE_FOLDER" 2>/dev/null || true
+fi
+
 if [ -z "\$DBUS_SESSION_BUS_ADDRESS" ]; then
     eval \$(dbus-launch --sh-syntax)
     export DBUS_SESSION_BUS_ADDRESS
