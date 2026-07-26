@@ -2,9 +2,12 @@
 set -e
 
 PORT="${PORT:-52425}"
+HTTP_PORT="${HTTPPORT:-43635}"
 
 echo "======================================================="
 echo " Installing Antigravity DevContainer Feature"
+echo "   HTTPS Port : ${PORT}"
+echo "   HTTP Port  : ${HTTP_PORT}"
 echo "======================================================="
 
 # Install Linux D-Bus & secret-service keyring dependencies for token persistence
@@ -40,7 +43,7 @@ URL_LINE="$@"
 echo "AUTH_URL: ${URL_LINE}" >> "${USER_HOME}/.gemini/antigravity/auth_urls.log"
 echo "${URL_LINE}" > /tmp/antigravity-auth.url
 
-# Print prominently to stdout/stderr if run from interactive terminal or log stream
+# Print prominently to stderr for container log streaming
 echo "" >&2
 echo "==========================================================================" >&2
 echo "🔑 ANTIGRAVITY OAUTH URL DETECTED:" >&2
@@ -63,7 +66,7 @@ if [ -f "${USER_HOME}/.gemini/antigravity/auth_urls.log" ]; then
     tail -n 1 "${USER_HOME}/.gemini/antigravity/auth_urls.log" | sed 's/^AUTH_URL: //'
     echo "=========================================================================="
 else
-    echo "No OAuth URL logged yet. Open http://127.0.0.1:43635/ in your browser and click Sign In."
+    echo "No OAuth URL logged yet. Open your workspace HTTP URL in browser and click Sign In."
 fi
 EOF
 chmod +x /usr/local/bin/agy-auth
@@ -93,14 +96,14 @@ nohup /usr/local/bin/language_server \
   --override_ide_version 2.4.2 \
   --override_user_agent_name antigravity \
   --https_server_port "${PORT}" \
-  --http_server_port 43635 \
+  --http_server_port "${HTTP_PORT}" \
   --csrf_token devcontainer-secret \
   --app_data_dir antigravity \
   --api_server_url https://generativelanguage.googleapis.com \
   --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com \
   --enable_sidecars > "\${USER_HOME}/.gemini/antigravity/language_server.log" 2>&1 &
 
-echo "Antigravity language_server daemon started on HTTPS port ${PORT} and HTTP port 43635 (PID \$!)"
+echo "Antigravity language_server daemon started on HTTPS port ${PORT} and HTTP port ${HTTP_PORT} (PID \$!)"
 EOF
 chmod +x /usr/local/bin/start-antigravity
 
