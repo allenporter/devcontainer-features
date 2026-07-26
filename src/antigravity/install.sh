@@ -61,4 +61,12 @@ echo "Antigravity language_server daemon started on port ${PORT} (PID \$!)"
 EOF
 chmod +x /usr/local/bin/start-antigravity
 
+# Create profile autostart hook
+cat << 'EOF' > /etc/profile.d/antigravity-autostart.sh
+if [ -x /usr/local/bin/start-antigravity ] && ! pgrep -f language_server >/dev/null 2>&1; then
+    /usr/local/bin/start-antigravity >/dev/null 2>&1 &
+fi
+EOF
+chmod +x /etc/profile.d/antigravity-autostart.sh
+
 echo "Antigravity DevContainer Feature installed successfully!"
