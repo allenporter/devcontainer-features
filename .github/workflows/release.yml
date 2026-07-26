@@ -1,0 +1,20 @@
+name: Release DevContainer Features
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  publish:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install DevContainer CLI
+        run: npm install -g @devcontainers/cli
+
+      - name: Publish Feature to Zot
+        run: |
+          devcontainer features publish ./src/antigravity \
+            --registry zot.mrv.thebends.org/devcontainers
