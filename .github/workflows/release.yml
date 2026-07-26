@@ -17,4 +17,5 @@ jobs:
       - name: Publish Feature to Zot
         run: |
           devcontainer features publish ./src/antigravity \
-            --registry zot.mrv.thebends.org/devcontainers
+            --registry zot.mrv.thebends.org \
+            --namespace devcontainers
