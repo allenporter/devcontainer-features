@@ -13,18 +13,21 @@ apt-get update && apt-get install -y --no-install-recommends \
     dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq
 rm -rf /var/lib/apt/lists/*
 
-# Run official Google Antigravity installer
-echo "Running official Antigravity installer..."
-curl -fsSL https://antigravity.google/install.sh | bash
+# Fetch latest Linux x86_64 AppImage URL from Google updater manifest
+MANIFEST_URL="https://antigravity-hub-auto-updater-974169037036.us-central1.run.app/manifest/latest-x64-linux.yml"
+APPIMAGE_URL=$(curl -sSL "$MANIFEST_URL" | grep -o 'https://.*Antigravity\.AppImage' | head -n 1)
 
-# Ensure language_server is available globally in /usr/local/bin for non-root users
-if [ -f /root/.gemini/antigravity/bin/language_server ]; then
-    cp /root/.gemini/antigravity/bin/language_server /usr/local/bin/language_server
-    chmod 755 /usr/local/bin/language_server
-elif [ -f ~/.gemini/antigravity/bin/language_server ]; then
-    cp ~/.gemini/antigravity/bin/language_server /usr/local/bin/language_server
-    chmod 755 /usr/local/bin/language_server
-fi
+echo "Downloading Antigravity language_server from: ${APPIMAGE_URL}"
+
+TMP_DIR=$(mktemp -d)
+cd "$TMP_DIR"
+curl -sSL -o Antigravity.AppImage "$APPIMAGE_URL"
+chmod +x Antigravity.AppImage
+./Antigravity.AppImage --appimage-extract >/dev/null 2>&1
+
+cp squashfs-root/resources/bin/language_server /usr/local/bin/language_server
+chmod 755 /usr/local/bin/language_server
+cd / && rm -rf "$TMP_DIR"
 
 # Create headless xdg-open OAuth handler
 cat << 'EOF' > /usr/local/bin/xdg-open
