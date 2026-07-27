@@ -7,7 +7,7 @@ INTERNAL_HTTPS_PORT=$((PORT - 1))
 INTERNAL_HTTP_PORT=$((HTTP_PORT - 1))
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.0.12"
+echo " Installing Antigravity DevContainer Feature v1.0.13"
 echo "   HTTPS Port : ${PORT} (Nginx Proxy to ${INTERNAL_HTTPS_PORT})"
 echo "   HTTP Port  : ${HTTP_PORT} (Nginx Proxy to ${INTERNAL_HTTP_PORT})"
 echo "======================================================="
@@ -34,15 +34,22 @@ cp squashfs-root/resources/bin/language_server /usr/local/bin/language_server
 chmod 755 /usr/local/bin/language_server
 cd / && rm -rf "$TMP_DIR"
 
-# Create Nginx configuration for Host header rewriting and non-blocking streaming
+# Create Nginx configuration with detailed HTTP request access logging
 cat << EOF > /etc/nginx/antigravity.conf
 events {
-    worker_connections 1024;
+    worker_connections 2048;
 }
 http {
     include       /etc/nginx/mime.types;
     default_type  application/octet-stream;
-    access_log    off;
+    
+    log_format main '\$remote_addr - \$remote_user [\$time_local] "\$request" '
+                    '\$status \$body_bytes_sent "\$http_referer" '
+                    '"\$http_user_agent" rt=\$request_time urt=\$upstream_response_time';
+    
+    access_log /var/log/nginx/antigravity_access.log main;
+    error_log  /var/log/nginx/antigravity_error.log info;
+
     server {
         listen ${HTTP_PORT};
         location / {
@@ -52,7 +59,9 @@ http {
             proxy_set_header Upgrade \$http_upgrade;
             proxy_set_header Connection "upgrade";
             proxy_buffering off;
+            proxy_cache off;
             proxy_read_timeout 86400s;
+            proxy_send_timeout 86400s;
         }
     }
 }
@@ -135,6 +144,8 @@ nohup /usr/local/bin/language_server \
   --enable_sidecars > "\${USER_HOME}/.gemini/antigravity/language_server.log" 2>&1 &
 
 sleep 1
+touch /var/log/nginx/antigravity_access.log
+chmod 666 /var/log/nginx/antigravity_access.log 2>/dev/null || true
 nginx -c /etc/nginx/antigravity.conf >/dev/null 2>&1 &
 
 echo "Antigravity daemon & Nginx proxy started on HTTP port ${HTTP_PORT}!"
