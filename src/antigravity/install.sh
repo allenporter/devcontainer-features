@@ -7,15 +7,15 @@ INTERNAL_HTTPS_PORT=$((PORT - 1))
 INTERNAL_HTTP_PORT=$((HTTP_PORT - 1))
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.0.10"
+echo " Installing Antigravity DevContainer Feature v1.0.11"
 echo "   HTTPS Port : ${PORT} (Proxy to ${INTERNAL_HTTPS_PORT})"
 echo "   HTTP Port  : ${HTTP_PORT} (Proxy to ${INTERNAL_HTTP_PORT})"
 echo "======================================================="
 
-# Install Linux D-Bus, secret-service keyring, and socat for direct network binding
+# Install Linux D-Bus, secret-service keyring, and python3 for host-rewrite proxy
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
-    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq socat
+    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq python3
 rm -rf /var/lib/apt/lists/*
 
 # Fetch latest Linux x86_64 AppImage URL from Google updater manifest
@@ -33,6 +33,74 @@ chmod +x Antigravity.AppImage
 cp squashfs-root/resources/bin/language_server /usr/local/bin/language_server
 chmod 755 /usr/local/bin/language_server
 cd / && rm -rf "$TMP_DIR"
+
+# Create Host-Header rewriting HTTP proxy
+cat << 'EOF' > /usr/local/bin/antigravity-proxy
+#!/usr/bin/env python3
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import urllib.request
+import sys
+
+TARGET_PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 43634
+LISTEN_PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 43635
+
+class ProxyHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass
+
+    def do_GET(self):
+        self.proxy_request("GET")
+
+    def do_POST(self):
+        self.proxy_request("POST")
+
+    def do_PUT(self):
+        self.proxy_request("PUT")
+
+    def do_DELETE(self):
+        self.proxy_request("DELETE")
+
+    def do_OPTIONS(self):
+        self.proxy_request("OPTIONS")
+
+    def proxy_request(self, method):
+        url = f"http://127.0.0.1:{TARGET_PORT}{self.path}"
+        headers = {k: v for k, v in self.headers.items()}
+        headers["Host"] = f"localhost:{TARGET_PORT}"
+
+        body = None
+        if "Content-Length" in self.headers:
+            length = int(self.headers["Content-Length"])
+            body = self.rfile.read(length)
+
+        req = urllib.request.Request(url, data=body, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req) as resp:
+                self.send_response(resp.status)
+                for k, v in resp.headers.items():
+                    if k.lower() not in ["transfer-encoding", "content-length"]:
+                        self.send_header(k, v)
+                resp_bytes = resp.read()
+                self.send_header("Content-Length", str(len(resp_bytes)))
+                self.end_headers()
+                self.wfile.write(resp_bytes)
+        except urllib.error.HTTPError as e:
+            self.send_response(e.code)
+            for k, v in e.headers.items():
+                if k.lower() not in ["transfer-encoding", "content-length"]:
+                    self.send_header(k, v)
+            resp_bytes = e.read()
+            self.send_header("Content-Length", str(len(resp_bytes)))
+            self.end_headers()
+            self.wfile.write(resp_bytes)
+        except Exception as ex:
+            self.send_error(500, str(ex))
+
+if __name__ == "__main__":
+    server = HTTPServer(("0.0.0.0", LISTEN_PORT), ProxyHandler)
+    server.serve_forever()
+EOF
+chmod +x /usr/local/bin/antigravity-proxy
 
 # Create headless xdg-open OAuth handler
 cat << 'EOF' > /usr/local/bin/xdg-open
@@ -91,7 +159,7 @@ eval \$(echo "" | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null
 export GNOME_KEYRING_CONTROL
 
 pkill -9 -f language_server || true
-pkill -9 socat || true
+pkill -9 -f antigravity-proxy || true
 sleep 1
 
 export PATH="/usr/local/bin:\${USER_HOME}/.gemini/antigravity/bin:\$PATH"
@@ -111,22 +179,9 @@ nohup /usr/local/bin/language_server \
   --enable_sidecars > "\${USER_HOME}/.gemini/antigravity/language_server.log" 2>&1 &
 
 sleep 1
-nohup socat TCP-LISTEN:${HTTP_PORT},fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:${INTERNAL_HTTP_PORT} >/dev/null 2>&1 &
-nohup socat TCP-LISTEN:${PORT},fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:${INTERNAL_HTTPS_PORT} >/dev/null 2>&1 &
+nohup /usr/local/bin/antigravity-proxy "${INTERNAL_HTTP_PORT}" "${HTTP_PORT}" >/dev/null 2>&1 &
 
-# Auto-proxy monitor for any dynamic OAuth ports opened by language_server
-(
-  while true; do
-    for P in \$(ss -tlpn 2>/dev/null | grep language_server | awk '{print \$4}' | awk -F: '{print \$2}' | sort -u); do
-      if [ -n "\$P" ] && [ "\$P" != "${INTERNAL_HTTP_PORT}" ] && [ "\$P" != "${INTERNAL_HTTPS_PORT}" ] && ! pgrep -f "TCP-LISTEN:\${P}" >/dev/null 2>&1; then
-        nohup socat TCP-LISTEN:\${P},fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:\${P} >/dev/null 2>&1 &
-      fi
-    done
-    sleep 2
-  done
-) >/dev/null 2>&1 &
-
-echo "Antigravity daemon & dynamic socat auto-proxy started!"
+echo "Antigravity daemon & Host-rewrite proxy started on HTTP port ${HTTP_PORT}!"
 EOF
 chmod +x /usr/local/bin/start-antigravity
 
