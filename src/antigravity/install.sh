@@ -3,17 +3,19 @@ set -e
 
 PORT="${PORT:-52425}"
 HTTP_PORT="${HTTPPORT:-43635}"
+INTERNAL_HTTPS_PORT=$((PORT - 1))
+INTERNAL_HTTP_PORT=$((HTTP_PORT - 1))
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature"
-echo "   HTTPS Port : ${PORT}"
-echo "   HTTP Port  : ${HTTP_PORT}"
+echo " Installing Antigravity DevContainer Feature v1.0.9"
+echo "   HTTPS Port : ${PORT} (Proxy to ${INTERNAL_HTTPS_PORT})"
+echo "   HTTP Port  : ${HTTP_PORT} (Proxy to ${INTERNAL_HTTP_PORT})"
 echo "======================================================="
 
-# Install Linux D-Bus & secret-service keyring dependencies for token persistence
+# Install Linux D-Bus, secret-service keyring, and socat for direct network binding
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
-    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq
+    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq socat
 rm -rf /var/lib/apt/lists/*
 
 # Fetch latest Linux x86_64 AppImage URL from Google updater manifest
@@ -43,7 +45,6 @@ URL_LINE="$@"
 echo "AUTH_URL: ${URL_LINE}" >> "${USER_HOME}/.gemini/antigravity/auth_urls.log"
 echo "${URL_LINE}" > /tmp/antigravity-auth.url
 
-# Print prominently to stderr for container log streaming
 echo "" >&2
 echo "==========================================================================" >&2
 echo "🔑 ANTIGRAVITY OAUTH URL DETECTED:" >&2
@@ -80,20 +81,17 @@ USER_HOME=\$(eval echo "~\${TARGET_USER}")
 mkdir -p "\${USER_HOME}/.gemini/antigravity"
 mkdir -p "\${USER_HOME}/.local/share/keyrings"
 
-# Initialize D-Bus session if not present
 if [ -z "\$DBUS_SESSION_BUS_ADDRESS" ]; then
     eval \$(dbus-launch --sh-syntax)
     export DBUS_SESSION_BUS_ADDRESS
 fi
 
-# Kill old gnome-keyring instances to prevent daemon locking
 pkill -f gnome-keyring-daemon || true
-
-# Initialize & unlock default gnome-keyring headlessly
 eval \$(echo "" | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null || true)
 export GNOME_KEYRING_CONTROL
 
-pkill -9 -f language_server 2>/dev/null || true
+pkill -9 -f language_server || true
+pkill -9 socat || true
 sleep 1
 
 export PATH="/usr/local/bin:\${USER_HOME}/.gemini/antigravity/bin:\$PATH"
@@ -104,15 +102,19 @@ nohup /usr/local/bin/language_server \
   --subclient_type hub \
   --override_ide_version 2.4.2 \
   --override_user_agent_name antigravity \
-  --https_server_port "${PORT}" \
-  --http_server_port "${HTTP_PORT}" \
+  --https_server_port "${INTERNAL_HTTPS_PORT}" \
+  --http_server_port "${INTERNAL_HTTP_PORT}" \
   --csrf_token devcontainer-secret \
   --app_data_dir antigravity \
   --api_server_url https://generativelanguage.googleapis.com \
   --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com \
   --enable_sidecars > "\${USER_HOME}/.gemini/antigravity/language_server.log" 2>&1 &
 
-echo "Antigravity language_server daemon started on HTTPS port ${PORT} and HTTP port ${HTTP_PORT} (PID \$!)"
+sleep 1
+nohup socat TCP-LISTEN:${HTTP_PORT},fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:${INTERNAL_HTTP_PORT} >/dev/null 2>&1 &
+nohup socat TCP-LISTEN:${PORT},fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:${INTERNAL_HTTPS_PORT} >/dev/null 2>&1 &
+
+echo "Antigravity daemon & direct 0.0.0.0 socat proxy started on HTTP port ${HTTP_PORT} and HTTPS port ${PORT}"
 EOF
 chmod +x /usr/local/bin/start-antigravity
 

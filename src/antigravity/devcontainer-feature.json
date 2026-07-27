@@ -1,6 +1,6 @@
 {
   "id": "antigravity",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "name": "Antigravity Agent Daemon",
   "description": "Installs and launches the Google Antigravity 2.0 language_server daemon inside DevContainers",
   "entrypoint": "/usr/local/bin/start-antigravity",
