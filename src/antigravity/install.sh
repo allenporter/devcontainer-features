@@ -7,15 +7,15 @@ INTERNAL_HTTPS_PORT=$((PORT - 1))
 INTERNAL_HTTP_PORT=$((HTTP_PORT - 1))
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.0.13"
-echo "   HTTPS Port : ${PORT} (Nginx Proxy to ${INTERNAL_HTTPS_PORT})"
-echo "   HTTP Port  : ${HTTP_PORT} (Nginx Proxy to ${INTERNAL_HTTP_PORT})"
+echo " Installing Antigravity DevContainer Feature v1.0.14"
+echo "   HTTPS (HTTP/2 Multiplexed) Port : ${PORT}"
+echo "   HTTP (HTTP/1.1) Port            : ${HTTP_PORT}"
 echo "======================================================="
 
-# Install Linux D-Bus, secret-service keyring, and nginx for sub-ms streaming proxying
+# Install Linux D-Bus, secret-service keyring, openssl, and nginx
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
-    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq nginx
+    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq nginx openssl
 rm -rf /var/lib/apt/lists/*
 
 # Fetch latest Linux x86_64 AppImage URL from Google updater manifest
@@ -34,10 +34,16 @@ cp squashfs-root/resources/bin/language_server /usr/local/bin/language_server
 chmod 755 /usr/local/bin/language_server
 cd / && rm -rf "$TMP_DIR"
 
-# Create Nginx configuration with detailed HTTP request access logging
+# Generate SSL Certificate for HTTP/2 multiplexing
+openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+    -keyout /etc/nginx/antigravity.key \
+    -out /etc/nginx/antigravity.crt \
+    -subj "/CN=devcontainer-antigravity" 2>/dev/null || true
+
+# Create Nginx configuration with HTTP/1.1 and HTTP/2 Multiplexing
 cat << EOF > /etc/nginx/antigravity.conf
 events {
-    worker_connections 2048;
+    worker_connections 4096;
 }
 http {
     include       /etc/nginx/mime.types;
@@ -50,8 +56,30 @@ http {
     access_log /var/log/nginx/antigravity_access.log main;
     error_log  /var/log/nginx/antigravity_error.log info;
 
+    # HTTP/1.1 Port
     server {
         listen ${HTTP_PORT};
+        keepalive_timeout 86400s;
+        keepalive_requests 10000;
+        location / {
+            proxy_pass http://127.0.0.1:${INTERNAL_HTTP_PORT};
+            proxy_set_header Host localhost:${INTERNAL_HTTP_PORT};
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade \$http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 86400s;
+            proxy_send_timeout 86400s;
+        }
+    }
+
+    # HTTP/2 SSL Multiplexed Port (Solves Chrome 6-connection HTTP/1.1 pending limit!)
+    server {
+        listen ${PORT} ssl http2;
+        ssl_certificate /etc/nginx/antigravity.crt;
+        ssl_certificate_key /etc/nginx/antigravity.key;
+        keepalive_timeout 86400s;
         location / {
             proxy_pass http://127.0.0.1:${INTERNAL_HTTP_PORT};
             proxy_set_header Host localhost:${INTERNAL_HTTP_PORT};
@@ -146,9 +174,9 @@ nohup /usr/local/bin/language_server \
 sleep 1
 touch /var/log/nginx/antigravity_access.log
 chmod 666 /var/log/nginx/antigravity_access.log 2>/dev/null || true
-nginx -c /etc/nginx/antigravity.conf >/dev/null 2>&1 &
+/usr/sbin/nginx -c /etc/nginx/antigravity.conf >/dev/null 2>&1 &
 
-echo "Antigravity daemon & Nginx proxy started on HTTP port ${HTTP_PORT}!"
+echo "Antigravity daemon & Nginx HTTP/2 proxy started on ports ${HTTP_PORT} and ${PORT}!"
 EOF
 chmod +x /usr/local/bin/start-antigravity
 
