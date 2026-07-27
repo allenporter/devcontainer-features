@@ -78,11 +78,20 @@ cat << EOF > /usr/local/bin/start-antigravity
 TARGET_USER="\${REMOTE_USER:-vscode}"
 USER_HOME=\$(eval echo "~\${TARGET_USER}")
 mkdir -p "\${USER_HOME}/.gemini/antigravity"
+mkdir -p "\${USER_HOME}/.local/share/keyrings"
 
+# Initialize D-Bus session if not present
 if [ -z "\$DBUS_SESSION_BUS_ADDRESS" ]; then
     eval \$(dbus-launch --sh-syntax)
     export DBUS_SESSION_BUS_ADDRESS
 fi
+
+# Kill old gnome-keyring instances to prevent daemon locking
+pkill -f gnome-keyring-daemon || true
+
+# Initialize & unlock default gnome-keyring headlessly
+eval \$(echo "" | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null || true)
+export GNOME_KEYRING_CONTROL
 
 pkill -9 -f language_server 2>/dev/null || true
 sleep 1
