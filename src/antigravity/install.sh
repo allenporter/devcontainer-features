@@ -7,7 +7,7 @@ INTERNAL_HTTPS_PORT=$((PORT - 1))
 INTERNAL_HTTP_PORT=$((HTTP_PORT - 1))
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.0.9"
+echo " Installing Antigravity DevContainer Feature v1.0.10"
 echo "   HTTPS Port : ${PORT} (Proxy to ${INTERNAL_HTTPS_PORT})"
 echo "   HTTP Port  : ${HTTP_PORT} (Proxy to ${INTERNAL_HTTP_PORT})"
 echo "======================================================="
@@ -114,7 +114,19 @@ sleep 1
 nohup socat TCP-LISTEN:${HTTP_PORT},fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:${INTERNAL_HTTP_PORT} >/dev/null 2>&1 &
 nohup socat TCP-LISTEN:${PORT},fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:${INTERNAL_HTTPS_PORT} >/dev/null 2>&1 &
 
-echo "Antigravity daemon & direct 0.0.0.0 socat proxy started on HTTP port ${HTTP_PORT} and HTTPS port ${PORT}"
+# Auto-proxy monitor for any dynamic OAuth ports opened by language_server
+(
+  while true; do
+    for P in \$(ss -tlpn 2>/dev/null | grep language_server | awk '{print \$4}' | awk -F: '{print \$2}' | sort -u); do
+      if [ -n "\$P" ] && [ "\$P" != "${INTERNAL_HTTP_PORT}" ] && [ "\$P" != "${INTERNAL_HTTPS_PORT}" ] && ! pgrep -f "TCP-LISTEN:\${P}" >/dev/null 2>&1; then
+        nohup socat TCP-LISTEN:\${P},fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:\${P} >/dev/null 2>&1 &
+      fi
+    done
+    sleep 2
+  done
+) >/dev/null 2>&1 &
+
+echo "Antigravity daemon & dynamic socat auto-proxy started!"
 EOF
 chmod +x /usr/local/bin/start-antigravity
 
