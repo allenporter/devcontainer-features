@@ -2,19 +2,16 @@
 set -e
 
 PORT="${PORT:-52425}"
-HTTP_PORT="${HTTPPORT:-43635}"
-INTERNAL_PORT=$((PORT - 1))
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.1.1"
-echo "   External HTTPS Port : ${PORT}"
-echo "   External HTTP Port  : ${HTTP_PORT}"
+echo " Installing Antigravity DevContainer Feature v1.2.0"
+echo "   Pure Standalone Daemon Port : ${PORT}"
 echo "======================================================="
 
-# Install Linux D-Bus, secret-service keyring, openssl, and nginx
+# Install Linux D-Bus and secret-service keyring dependencies
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
-    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq nginx openssl
+    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq
 rm -rf /var/lib/apt/lists/*
 
 # Fetch latest Linux x86_64 AppImage URL from Google updater manifest
@@ -32,63 +29,6 @@ chmod +x Antigravity.AppImage
 cp squashfs-root/resources/bin/language_server /usr/local/bin/language_server
 chmod 755 /usr/local/bin/language_server
 cd / && rm -rf "$TMP_DIR"
-
-# Generate SSL Certificate for HTTPS/HTTP2
-openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-    -keyout /etc/nginx/antigravity.key \
-    -out /etc/nginx/antigravity.crt \
-    -subj "/CN=devcontainer-antigravity" 2>/dev/null || true
-
-# Nginx binds to 0.0.0.0 on all interfaces and proxies to 127.0.0.1 language_server
-cat << EOF > /etc/nginx/antigravity.conf
-events {
-    worker_connections 4096;
-}
-http {
-    include       /etc/nginx/mime.types;
-    default_type  application/octet-stream;
-    
-    access_log /var/log/nginx/antigravity_access.log;
-    error_log  /var/log/nginx/antigravity_error.log info;
-
-    # HTTP Unencrypted Port (0.0.0.0)
-    server {
-        listen 0.0.0.0:${HTTP_PORT};
-        keepalive_timeout 86400s;
-        keepalive_requests 10000;
-        location / {
-            proxy_pass http://127.0.0.1:${INTERNAL_PORT};
-            proxy_set_header Host localhost:${INTERNAL_PORT};
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade \$http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_buffering off;
-            proxy_cache off;
-            proxy_read_timeout 86400s;
-            proxy_send_timeout 86400s;
-        }
-    }
-
-    # HTTPS SSL Port (0.0.0.0)
-    server {
-        listen 0.0.0.0:${PORT} ssl http2;
-        ssl_certificate /etc/nginx/antigravity.crt;
-        ssl_certificate_key /etc/nginx/antigravity.key;
-        keepalive_timeout 86400s;
-        location / {
-            proxy_pass http://127.0.0.1:${INTERNAL_PORT};
-            proxy_set_header Host localhost:${INTERNAL_PORT};
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade \$http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_buffering off;
-            proxy_cache off;
-            proxy_read_timeout 86400s;
-            proxy_send_timeout 86400s;
-        }
-    }
-}
-EOF
 
 # Create headless xdg-open OAuth handler
 cat << 'EOF' > /usr/local/bin/xdg-open
@@ -147,7 +87,6 @@ eval \$(echo "" | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null
 export GNOME_KEYRING_CONTROL
 
 pkill -9 -f language_server || true
-pkill -9 -f nginx || true
 sleep 1
 
 export PATH="/usr/local/bin:\${USER_HOME}/.gemini/antigravity/bin:\$PATH"
@@ -158,20 +97,14 @@ nohup /usr/local/bin/language_server \
   --subclient_type hub \
   --override_ide_version 2.4.2 \
   --override_user_agent_name antigravity \
-  --https_server_port "\$((${PORT} - 2))" \
-  --http_server_port "${INTERNAL_PORT}" \
+  --http_server_port "${PORT}" \
   --csrf_token devcontainer-secret \
   --app_data_dir antigravity \
   --api_server_url https://generativelanguage.googleapis.com \
   --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com \
   --enable_sidecars > "\${USER_HOME}/.gemini/antigravity/language_server.log" 2>&1 &
 
-sleep 1
-touch /var/log/nginx/antigravity_access.log
-chmod 666 /var/log/nginx/antigravity_access.log 2>/dev/null || true
-/usr/sbin/nginx -c /etc/nginx/antigravity.conf >/dev/null 2>&1 &
-
-echo "Antigravity daemon & Nginx proxy started on 0.0.0.0:${PORT}!"
+echo "Antigravity language_server started directly on port ${PORT} (PID \$!)"
 EOF
 chmod +x /usr/local/bin/start-antigravity
 
