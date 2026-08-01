@@ -4,8 +4,8 @@ set -e
 PORT="${PORT:-52425}"
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.2.1"
-echo "   Port Forwarder : 0.0.0.0:${PORT} -> 127.0.0.1:52424"
+echo " Installing Antigravity DevContainer Feature v1.2.2"
+echo "   Auto OAuth Port Forwarder Enabled"
 echo "======================================================="
 
 # Install Linux D-Bus, secret-service keyring, and socat
@@ -30,7 +30,7 @@ cp squashfs-root/resources/bin/language_server /usr/local/bin/language_server
 chmod 755 /usr/local/bin/language_server
 cd / && rm -rf "$TMP_DIR"
 
-# Create headless xdg-open OAuth handler
+# Create headless xdg-open OAuth handler with auto socat port binding
 cat << 'EOF' > /usr/local/bin/xdg-open
 #!/bin/bash
 TARGET_USER="${REMOTE_USER:-vscode}"
@@ -41,9 +41,18 @@ URL_LINE="$@"
 echo "AUTH_URL: ${URL_LINE}" >> "${USER_HOME}/.gemini/antigravity/auth_urls.log"
 echo "${URL_LINE}" > /tmp/antigravity-auth.url
 
+# Extract OAuth callback port from redirect_uri (e.g. redirect_uri=http%3A%2F%2Flocalhost%3A41031%2Fauth%2Fcallback)
+CALLBACK_PORT=$(echo "${URL_LINE}" | grep -oE 'redirect_uri=http(%3A%2F%2F|://)localhost(%3A|:)[0-9]+' | grep -oE '[0-9]+$' || true)
+
+if [ -n "${CALLBACK_PORT}" ]; then
+    echo "Auto-binding socat 0.0.0.0:${CALLBACK_PORT} -> 127.0.0.1:${CALLBACK_PORT}" >> "${USER_HOME}/.gemini/antigravity/auth_urls.log"
+    pkill -f "socat TCP-LISTEN:${CALLBACK_PORT}" || true
+    nohup socat TCP-LISTEN:${CALLBACK_PORT},fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:${CALLBACK_PORT} >/dev/null 2>&1 &
+fi
+
 echo "" >&2
 echo "==========================================================================" >&2
-echo "🔑 ANTIGRAVITY OAUTH URL DETECTED:" >&2
+echo "🔑 ANTIGRAVITY OAUTH URL DETECTED (Callback Port: ${CALLBACK_PORT}):" >&2
 echo "${URL_LINE}" >&2
 echo "==========================================================================" >&2
 echo "" >&2
@@ -60,7 +69,7 @@ if [ -f "${USER_HOME}/.gemini/antigravity/auth_urls.log" ]; then
     echo "=========================================================================="
     echo "🔑 Latest Antigravity OAuth URL:"
     echo "=========================================================================="
-    tail -n 1 "${USER_HOME}/.gemini/antigravity/auth_urls.log" | sed 's/^AUTH_URL: //'
+    tail -n 2 "${USER_HOME}/.gemini/antigravity/auth_urls.log"
     echo "=========================================================================="
 else
     echo "No OAuth URL logged yet. Open your workspace HTTP URL in browser and click Sign In."
@@ -107,9 +116,9 @@ nohup /usr/local/bin/language_server \
   --enable_sidecars > "\${USER_HOME}/.gemini/antigravity/language_server.log" 2>&1 &
 
 sleep 1
-nohup socat TCP-LISTEN:${PORT},fork,reuseaddr TCP:127.0.0.1:52424 >/dev/null 2>&1 &
+nohup socat TCP-LISTEN:43635,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:52424 >/dev/null 2>&1 &
 
-echo "Antigravity language_server started with socat 0.0.0.0:${PORT} -> 127.0.0.1:52424"
+echo "Antigravity daemon started on port 52425 (HTTP 43635)"
 EOF
 chmod +x /usr/local/bin/start-antigravity
 
