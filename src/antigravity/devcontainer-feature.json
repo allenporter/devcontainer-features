@@ -1,6 +1,6 @@
 {
   "id": "antigravity",
-  "version": "1.0.14",
+  "version": "1.1.0",
   "name": "Antigravity Agent Daemon",
   "description": "Installs and launches the Google Antigravity 2.0 language_server daemon inside DevContainers",
   "entrypoint": "/usr/local/bin/start-antigravity",
@@ -8,12 +8,7 @@
     "port": {
       "type": "string",
       "default": "52425",
-      "description": "HTTPS port for the language_server daemon"
-    },
-    "httpPort": {
-      "type": "string",
-      "default": "43635",
-      "description": "HTTP/OAuth callback port for the language_server daemon"
+      "description": "Port for the language_server daemon"
     }
   },
   "containerEnv": {

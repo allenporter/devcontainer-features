@@ -2,20 +2,16 @@
 set -e
 
 PORT="${PORT:-52425}"
-HTTP_PORT="${HTTPPORT:-43635}"
-INTERNAL_HTTPS_PORT=$((PORT - 1))
-INTERNAL_HTTP_PORT=$((HTTP_PORT - 1))
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.0.14"
-echo "   HTTPS (HTTP/2 Multiplexed) Port : ${PORT}"
-echo "   HTTP (HTTP/1.1) Port            : ${HTTP_PORT}"
+echo " Installing Antigravity DevContainer Feature v1.1.0"
+echo "   Daemon Port : ${PORT}"
 echo "======================================================="
 
-# Install Linux D-Bus, secret-service keyring, openssl, and nginx
+# Install Linux D-Bus and secret-service keyring dependencies
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
-    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq nginx openssl
+    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq
 rm -rf /var/lib/apt/lists/*
 
 # Fetch latest Linux x86_64 AppImage URL from Google updater manifest
@@ -33,67 +29,6 @@ chmod +x Antigravity.AppImage
 cp squashfs-root/resources/bin/language_server /usr/local/bin/language_server
 chmod 755 /usr/local/bin/language_server
 cd / && rm -rf "$TMP_DIR"
-
-# Generate SSL Certificate for HTTP/2 multiplexing
-openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-    -keyout /etc/nginx/antigravity.key \
-    -out /etc/nginx/antigravity.crt \
-    -subj "/CN=devcontainer-antigravity" 2>/dev/null || true
-
-# Create Nginx configuration with HTTP/1.1 and HTTP/2 Multiplexing
-cat << EOF > /etc/nginx/antigravity.conf
-events {
-    worker_connections 4096;
-}
-http {
-    include       /etc/nginx/mime.types;
-    default_type  application/octet-stream;
-    
-    log_format main '\$remote_addr - \$remote_user [\$time_local] "\$request" '
-                    '\$status \$body_bytes_sent "\$http_referer" '
-                    '"\$http_user_agent" rt=\$request_time urt=\$upstream_response_time';
-    
-    access_log /var/log/nginx/antigravity_access.log main;
-    error_log  /var/log/nginx/antigravity_error.log info;
-
-    # HTTP/1.1 Port
-    server {
-        listen ${HTTP_PORT};
-        keepalive_timeout 86400s;
-        keepalive_requests 10000;
-        location / {
-            proxy_pass http://127.0.0.1:${INTERNAL_HTTP_PORT};
-            proxy_set_header Host localhost:${INTERNAL_HTTP_PORT};
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade \$http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_buffering off;
-            proxy_cache off;
-            proxy_read_timeout 86400s;
-            proxy_send_timeout 86400s;
-        }
-    }
-
-    # HTTP/2 SSL Multiplexed Port (Solves Chrome 6-connection HTTP/1.1 pending limit!)
-    server {
-        listen ${PORT} ssl http2;
-        ssl_certificate /etc/nginx/antigravity.crt;
-        ssl_certificate_key /etc/nginx/antigravity.key;
-        keepalive_timeout 86400s;
-        location / {
-            proxy_pass http://127.0.0.1:${INTERNAL_HTTP_PORT};
-            proxy_set_header Host localhost:${INTERNAL_HTTP_PORT};
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade \$http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_buffering off;
-            proxy_cache off;
-            proxy_read_timeout 86400s;
-            proxy_send_timeout 86400s;
-        }
-    }
-}
-EOF
 
 # Create headless xdg-open OAuth handler
 cat << 'EOF' > /usr/local/bin/xdg-open
@@ -152,7 +87,6 @@ eval \$(echo "" | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null
 export GNOME_KEYRING_CONTROL
 
 pkill -9 -f language_server || true
-pkill -9 -f nginx || true
 sleep 1
 
 export PATH="/usr/local/bin:\${USER_HOME}/.gemini/antigravity/bin:\$PATH"
@@ -163,20 +97,15 @@ nohup /usr/local/bin/language_server \
   --subclient_type hub \
   --override_ide_version 2.4.2 \
   --override_user_agent_name antigravity \
-  --https_server_port "${INTERNAL_HTTPS_PORT}" \
-  --http_server_port "${INTERNAL_HTTP_PORT}" \
+  --https_server_port "${PORT}" \
+  --http_server_port "\$((${PORT} - 1))" \
   --csrf_token devcontainer-secret \
   --app_data_dir antigravity \
   --api_server_url https://generativelanguage.googleapis.com \
   --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com \
   --enable_sidecars > "\${USER_HOME}/.gemini/antigravity/language_server.log" 2>&1 &
 
-sleep 1
-touch /var/log/nginx/antigravity_access.log
-chmod 666 /var/log/nginx/antigravity_access.log 2>/dev/null || true
-/usr/sbin/nginx -c /etc/nginx/antigravity.conf >/dev/null 2>&1 &
-
-echo "Antigravity daemon & Nginx HTTP/2 proxy started on ports ${HTTP_PORT} and ${PORT}!"
+echo "Antigravity language_server daemon started on port ${PORT} (PID \$!)"
 EOF
 chmod +x /usr/local/bin/start-antigravity
 
