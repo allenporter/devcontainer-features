@@ -4,8 +4,8 @@ set -e
 PORT="${PORT:-52425}"
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.2.2"
-echo "   Auto OAuth Port Forwarder Enabled"
+echo " Installing Antigravity DevContainer Feature v1.2.3"
+echo "   Production Endpoint Enabled"
 echo "======================================================="
 
 # Install Linux D-Bus, secret-service keyring, and socat
@@ -41,7 +41,7 @@ URL_LINE="$@"
 echo "AUTH_URL: ${URL_LINE}" >> "${USER_HOME}/.gemini/antigravity/auth_urls.log"
 echo "${URL_LINE}" > /tmp/antigravity-auth.url
 
-# Extract OAuth callback port from redirect_uri (e.g. redirect_uri=http%3A%2F%2Flocalhost%3A41031%2Fauth%2Fcallback)
+# Extract OAuth callback port from redirect_uri
 CALLBACK_PORT=$(echo "${URL_LINE}" | grep -oE 'redirect_uri=http(%3A%2F%2F|://)localhost(%3A|:)[0-9]+' | grep -oE '[0-9]+$' || true)
 
 if [ -n "${CALLBACK_PORT}" ]; then
@@ -112,7 +112,7 @@ nohup /usr/local/bin/language_server \
   --csrf_token devcontainer-secret \
   --app_data_dir antigravity \
   --api_server_url https://generativelanguage.googleapis.com \
-  --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com \
+  --cloud_code_endpoint https://cloudcode.googleapis.com \
   --enable_sidecars > "\${USER_HOME}/.gemini/antigravity/language_server.log" 2>&1 &
 
 sleep 1
