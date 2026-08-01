@@ -4,15 +4,16 @@ set -e
 PORT="${PORT:-52425}"
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.2.5"
-echo "   Daily Endpoint Enabled"
+echo " Installing Antigravity DevContainer Feature v1.2.6"
+echo "   Build-Time OpenSSH & Daemon Pre-Baking Enabled"
 echo "======================================================="
 
-# Install Linux D-Bus, secret-service keyring, and socat
+# Install Linux D-Bus, secret-service keyring, socat, and openssh-server
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
-    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq socat
+    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq socat openssh-server
 rm -rf /var/lib/apt/lists/*
+mkdir -p /var/run/sshd
 
 # Fetch latest Linux x86_64 AppImage URL from Google updater manifest
 MANIFEST_URL="https://antigravity-hub-auto-updater-974169037036.us-central1.run.app/manifest/latest-x64-linux.yml"
