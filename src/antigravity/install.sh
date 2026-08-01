@@ -4,8 +4,8 @@ set -e
 PORT="${PORT:-52425}"
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.2.3"
-echo "   Production Endpoint Enabled"
+echo " Installing Antigravity DevContainer Feature v1.2.4"
+echo "   Default Endpoint Integration"
 echo "======================================================="
 
 # Install Linux D-Bus, secret-service keyring, and socat
@@ -112,7 +112,6 @@ nohup /usr/local/bin/language_server \
   --csrf_token devcontainer-secret \
   --app_data_dir antigravity \
   --api_server_url https://generativelanguage.googleapis.com \
-  --cloud_code_endpoint https://cloudcode.googleapis.com \
   --enable_sidecars > "\${USER_HOME}/.gemini/antigravity/language_server.log" 2>&1 &
 
 sleep 1
