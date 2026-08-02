@@ -4,8 +4,8 @@ set -e
 PORT="${PORT:-52425}"
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.2.6"
-echo "   Build-Time OpenSSH & Daemon Pre-Baking Enabled"
+echo " Installing Antigravity DevContainer Feature v1.2.7"
+echo "   Universal User Home Detection Enabled"
 echo "======================================================="
 
 # Install Linux D-Bus, secret-service keyring, socat, and openssh-server
@@ -34,7 +34,7 @@ cd / && rm -rf "$TMP_DIR"
 # Create headless xdg-open OAuth handler with auto socat port binding
 cat << 'EOF' > /usr/local/bin/xdg-open
 #!/bin/bash
-TARGET_USER="${REMOTE_USER:-vscode}"
+TARGET_USER="${REMOTE_USER:-$(whoami)}"
 USER_HOME=$(eval echo "~${TARGET_USER}")
 mkdir -p "${USER_HOME}/.gemini/antigravity"
 
@@ -63,7 +63,7 @@ chmod +x /usr/local/bin/xdg-open
 # Create easy agy-auth helper script
 cat << 'EOF' > /usr/local/bin/agy-auth
 #!/bin/bash
-TARGET_USER="${REMOTE_USER:-vscode}"
+TARGET_USER="${REMOTE_USER:-$(whoami)}"
 USER_HOME=$(eval echo "~${TARGET_USER}")
 
 if [ -f "${USER_HOME}/.gemini/antigravity/auth_urls.log" ]; then
@@ -82,7 +82,7 @@ ln -sf /usr/local/bin/agy-auth /usr/local/bin/antigravity-auth
 # Create start-antigravity daemon launcher
 cat << EOF > /usr/local/bin/start-antigravity
 #!/bin/bash
-TARGET_USER="\${REMOTE_USER:-vscode}"
+TARGET_USER="\${REMOTE_USER:-\$(whoami)}"
 USER_HOME=\$(eval echo "~\${TARGET_USER}")
 mkdir -p "\${USER_HOME}/.gemini/antigravity"
 mkdir -p "\${USER_HOME}/.local/share/keyrings"
@@ -125,7 +125,7 @@ chmod +x /usr/local/bin/start-antigravity
 
 # Create profile autostart hook
 cat << 'EOF' > /etc/profile.d/antigravity-autostart.sh
-if [ -x /usr/local/bin/start-antigravity ] && ! pgrep -f language_server >/dev/null 2>&1; then
+if [ -x /usr/local/bin/start-antigravity ] && ! pgrep -x language_server >/dev/null 2>&1; then
     /usr/local/bin/start-antigravity >/dev/null 2>&1 &
 fi
 EOF
