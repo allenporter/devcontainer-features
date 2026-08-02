@@ -42,7 +42,7 @@ if [ -z "$AUTH_LOG" ]; then
     exit 1
 fi
 
-OAUTH_URL=$(echo "$AUTH_LOG" | grep -oE 'https://[^\s]+' | tail -n 1)
+OAUTH_URL=$(echo "$AUTH_LOG" | grep -oE 'https://[^"'\'' ]+' | tail -n 1)
 
 if [ -z "$OAUTH_URL" ]; then
     echo ""
@@ -53,7 +53,7 @@ if [ -z "$OAUTH_URL" ]; then
 fi
 
 # Extract redirect_uri callback port
-CALLBACK_PORT=$(echo "$OAUTH_URL" | grep -oE 'redirect_uri=http(%3A%2F%2F|://)localhost(%3A|:)[0-9]+' | grep -oE '[0-9]+$' || true)
+CALLBACK_PORT=$(echo "$OAUTH_URL" | grep -oE 'redirect_uri=http.*localhost(%3A|:)[0-9]+' | grep -oE '[0-9]+$' || true)
 
 if [ -z "$CALLBACK_PORT" ]; then
     echo "⚠️  Could not detect callback port from OAuth URL."
