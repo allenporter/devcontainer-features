@@ -4,8 +4,8 @@ set -e
 PORT="${PORT:-52425}"
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.2.7"
-echo "   Universal User Home Detection Enabled"
+echo " Installing Antigravity DevContainer Feature v1.2.8"
+echo "   Persistent Keyring & Auth Session Storage Enabled"
 echo "======================================================="
 
 # Install Linux D-Bus, secret-service keyring, socat, and openssh-server
@@ -80,27 +80,54 @@ chmod +x /usr/local/bin/agy-auth
 ln -sf /usr/local/bin/agy-auth /usr/local/bin/antigravity-auth
 
 # Create start-antigravity daemon launcher
-cat << EOF > /usr/local/bin/start-antigravity
+cat << 'EOF' > /usr/local/bin/start-antigravity
 #!/bin/bash
-TARGET_USER="\${REMOTE_USER:-\$(whoami)}"
-USER_HOME=\$(eval echo "~\${TARGET_USER}")
-mkdir -p "\${USER_HOME}/.gemini/antigravity"
-mkdir -p "\${USER_HOME}/.local/share/keyrings"
+TARGET_USER="${REMOTE_USER:-$(whoami)}"
+USER_HOME=$(eval echo "~${TARGET_USER}")
 
-if [ -z "\$DBUS_SESSION_BUS_ADDRESS" ]; then
-    eval \$(dbus-launch --sh-syntax)
+# Symlink keyring & antigravity configs to persistent PVC volume if /workspaces is mounted
+if [ -d "/workspaces" ]; then
+    PERSISTENT_DIR="/workspaces/.persistent_${TARGET_USER}"
+    mkdir -p "${PERSISTENT_DIR}/.local/share/keyrings"
+    mkdir -p "${PERSISTENT_DIR}/.gemini/antigravity"
+
+    mkdir -p "${USER_HOME}/.local/share"
+    mkdir -p "${USER_HOME}/.gemini"
+
+    if [ ! -L "${USER_HOME}/.local/share/keyrings" ]; then
+        if [ -d "${USER_HOME}/.local/share/keyrings" ]; then
+            cp -rn "${USER_HOME}/.local/share/keyrings/"* "${PERSISTENT_DIR}/.local/share/keyrings/" 2>/dev/null || true
+            rm -rf "${USER_HOME}/.local/share/keyrings"
+        fi
+        ln -s "${PERSISTENT_DIR}/.local/share/keyrings" "${USER_HOME}/.local/share/keyrings"
+    fi
+
+    if [ ! -L "${USER_HOME}/.gemini/antigravity" ]; then
+        if [ -d "${USER_HOME}/.gemini/antigravity" ]; then
+            cp -rn "${USER_HOME}/.gemini/antigravity/"* "${PERSISTENT_DIR}/.gemini/antigravity/" 2>/dev/null || true
+            rm -rf "${USER_HOME}/.gemini/antigravity"
+        fi
+        ln -s "${PERSISTENT_DIR}/.gemini/antigravity" "${USER_HOME}/.gemini/antigravity"
+    fi
+else
+    mkdir -p "${USER_HOME}/.gemini/antigravity"
+    mkdir -p "${USER_HOME}/.local/share/keyrings"
+fi
+
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+    eval $(dbus-launch --sh-syntax)
     export DBUS_SESSION_BUS_ADDRESS
 fi
 
 pkill -f gnome-keyring-daemon || true
-eval \$(echo "" | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null || true)
+eval $(echo "" | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null || true)
 export GNOME_KEYRING_CONTROL
 
 pkill -9 -f language_server || true
 pkill -9 -f socat || true
 sleep 1
 
-export PATH="/usr/local/bin:\${USER_HOME}/.gemini/antigravity/bin:\$PATH"
+export PATH="/usr/local/bin:${USER_HOME}/.gemini/antigravity/bin:$PATH"
 
 nohup /usr/local/bin/language_server \
   --standalone \
@@ -114,7 +141,7 @@ nohup /usr/local/bin/language_server \
   --app_data_dir antigravity \
   --api_server_url https://generativelanguage.googleapis.com \
   --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com \
-  --enable_sidecars > "\${USER_HOME}/.gemini/antigravity/language_server.log" 2>&1 &
+  --enable_sidecars > "${USER_HOME}/.gemini/antigravity/language_server.log" 2>&1 &
 
 sleep 1
 nohup socat TCP-LISTEN:43635,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:52424 >/dev/null 2>&1 &
