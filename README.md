@@ -24,6 +24,20 @@ Installs and launches the Google Antigravity 2.0 `language_server` daemon inside
 
 ---
 
+## 🔑 Client Auth Helper (`bin/agy-auth`)
+
+To automatically fetch the OAuth URL, open the browser, and start port-forwarding for any workspace:
+
+```bash
+./bin/agy-auth <workspace-name>
+
+# Example:
+./bin/agy-auth home-automation
+./bin/agy-auth harness-dev
+```
+
+---
+
 ## 📦 Publishing Updates to Zot Registry
 
 To publish feature updates to the Zot OCI registry:
