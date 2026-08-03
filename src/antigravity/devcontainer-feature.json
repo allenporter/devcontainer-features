@@ -1,17 +1,11 @@
 {
   "id": "antigravity",
-  "version": "1.2.8",
-  "name": "Antigravity Agent Daemon",
-  "description": "Installs and launches the Google Antigravity 2.0 language_server daemon inside DevContainers with PVC keyring persistence",
+  "version": "1.2.9",
+  "name": "Antigravity Language Server",
+  "description": "Installs and launches the Google Antigravity 2.0 language_server daemon inside DevContainers with Linux D-Bus token persistence.",
+  "options": {},
   "entrypoint": "/usr/local/bin/start-antigravity",
-  "options": {
-    "port": {
-      "type": "string",
-      "default": "52425",
-      "description": "Port for the language_server daemon"
-    }
-  },
-  "containerEnv": {
-    "ANTIGRAVITY_PORT": "52425"
-  }
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils"
+  ]
 }

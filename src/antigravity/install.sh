@@ -4,7 +4,7 @@ set -e
 PORT="${PORT:-52425}"
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.2.8"
+echo " Installing Antigravity DevContainer Feature v1.2.9"
 echo "   Persistent Keyring & Auth Session Storage Enabled"
 echo "======================================================="
 
@@ -34,7 +34,15 @@ cd / && rm -rf "$TMP_DIR"
 # Create headless xdg-open OAuth handler with auto socat port binding
 cat << 'EOF' > /usr/local/bin/xdg-open
 #!/bin/bash
-TARGET_USER="${REMOTE_USER:-$(whoami)}"
+if [ -n "${REMOTE_USER}" ]; then
+    TARGET_USER="${REMOTE_USER}"
+elif [ -d "/home/vscode" ]; then
+    TARGET_USER="vscode"
+elif [ -d "/home/admin" ]; then
+    TARGET_USER="admin"
+else
+    TARGET_USER="$(whoami)"
+fi
 USER_HOME=$(eval echo "~${TARGET_USER}")
 mkdir -p "${USER_HOME}/.gemini/antigravity"
 
@@ -63,7 +71,15 @@ chmod +x /usr/local/bin/xdg-open
 # Create easy agy-auth helper script
 cat << 'EOF' > /usr/local/bin/agy-auth
 #!/bin/bash
-TARGET_USER="${REMOTE_USER:-$(whoami)}"
+if [ -n "${REMOTE_USER}" ]; then
+    TARGET_USER="${REMOTE_USER}"
+elif [ -d "/home/vscode" ]; then
+    TARGET_USER="vscode"
+elif [ -d "/home/admin" ]; then
+    TARGET_USER="admin"
+else
+    TARGET_USER="$(whoami)"
+fi
 USER_HOME=$(eval echo "~${TARGET_USER}")
 
 if [ -f "${USER_HOME}/.gemini/antigravity/auth_urls.log" ]; then
@@ -82,7 +98,15 @@ ln -sf /usr/local/bin/agy-auth /usr/local/bin/antigravity-auth
 # Create start-antigravity daemon launcher
 cat << 'EOF' > /usr/local/bin/start-antigravity
 #!/bin/bash
-TARGET_USER="${REMOTE_USER:-$(whoami)}"
+if [ -n "${REMOTE_USER}" ]; then
+    TARGET_USER="${REMOTE_USER}"
+elif [ -d "/home/vscode" ]; then
+    TARGET_USER="vscode"
+elif [ -d "/home/admin" ]; then
+    TARGET_USER="admin"
+else
+    TARGET_USER="$(whoami)"
+fi
 USER_HOME=$(eval echo "~${TARGET_USER}")
 
 # Symlink keyring & antigravity configs to persistent PVC volume if /workspaces is mounted
@@ -109,6 +133,7 @@ if [ -d "/workspaces" ]; then
         fi
         ln -s "${PERSISTENT_DIR}/.gemini/antigravity" "${USER_HOME}/.gemini/antigravity"
     fi
+    chown -R "${TARGET_USER}:${TARGET_USER}" "${PERSISTENT_DIR}" "${USER_HOME}/.local" "${USER_HOME}/.gemini" 2>/dev/null || true
 else
     mkdir -p "${USER_HOME}/.gemini/antigravity"
     mkdir -p "${USER_HOME}/.local/share/keyrings"
