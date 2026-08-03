@@ -4,14 +4,14 @@ set -e
 PORT="${PORT:-52425}"
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.3.1"
+echo " Installing Antigravity DevContainer Feature v1.3.2"
 echo "   Native XDG Environment Storage Persistence Enabled"
 echo "======================================================="
 
-# Install Linux D-Bus, secret-service keyring, socat, and openssh-server
+# Install Linux D-Bus, secret-service keyring, and openssh-server
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
-    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq socat openssh-server
+    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq openssh-server
 rm -rf /var/lib/apt/lists/*
 mkdir -p /var/run/sshd
 
@@ -31,7 +31,7 @@ cp squashfs-root/resources/bin/language_server /usr/local/bin/language_server
 chmod 755 /usr/local/bin/language_server
 cd / && rm -rf "$TMP_DIR"
 
-# Create headless xdg-open OAuth handler with auto socat port binding
+# Create headless xdg-open OAuth handler
 cat << 'EOF' > /usr/local/bin/xdg-open
 #!/bin/bash
 if [ -n "${REMOTE_USER}" ]; then
@@ -61,12 +61,6 @@ echo "${URL_LINE}" > /tmp/antigravity-auth.url
 
 # Extract OAuth callback port from redirect_uri
 CALLBACK_PORT=$(echo "${URL_LINE}" | grep -oE 'redirect_uri=http(%3A%2F%2F|://)localhost(%3A|:)[0-9]+' | grep -oE '[0-9]+$' || true)
-
-if [ -n "${CALLBACK_PORT}" ]; then
-    echo "Auto-binding socat 0.0.0.0:${CALLBACK_PORT} -> 127.0.0.1:${CALLBACK_PORT}" >> "${XDG_DATA_HOME}/antigravity/auth_urls.log"
-    pkill -f "socat TCP-LISTEN:${CALLBACK_PORT}" || true
-    nohup socat TCP-LISTEN:${CALLBACK_PORT},fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:${CALLBACK_PORT} >/dev/null 2>&1 &
-fi
 
 echo "" >&2
 echo "==========================================================================" >&2
@@ -146,7 +140,6 @@ eval $(echo "" | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null 
 export GNOME_KEYRING_CONTROL
 
 pkill -9 -f language_server || true
-pkill -9 -f socat || true
 sleep 1
 
 export PATH="/usr/local/bin:${XDG_DATA_HOME}/antigravity/bin:$PATH"
@@ -165,10 +158,7 @@ nohup /usr/local/bin/language_server \
   --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com \
   --enable_sidecars > "${XDG_DATA_HOME}/antigravity/language_server.log" 2>&1 &
 
-sleep 1
-nohup socat TCP-LISTEN:43635,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:52424 >/dev/null 2>&1 &
-
-echo "Antigravity daemon started on port 52425 (HTTP 43635)"
+echo "Antigravity daemon started on port 52425 (HTTP 52424)"
 EOF
 chmod +x /usr/local/bin/start-antigravity
 

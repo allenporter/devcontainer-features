@@ -1,0 +1,64 @@
+#!/bin/bash
+set -e
+
+KUBECONFIG="${KUBECONFIG:-/Users/allen/Development/k8s-gitops/kubeconfig}"
+export KUBECONFIG
+
+WORKSPACE="${1:-home-automation}"
+WORKSPACE_NAME=$(echo "$WORKSPACE" | sed 's/^ws-//')
+
+DEPLOYMENT="deployment/ws-${WORKSPACE_NAME}"
+NAMESPACE="devcontainers"
+
+echo "=========================================================================="
+echo " 🧪 AUTOMATED WORKSPACE PERSISTENCE VERIFICATION TEST"
+echo " Target Workspace: ws-${WORKSPACE_NAME}"
+echo "=========================================================================="
+
+# 1. Fetch initial pod name
+OLD_POD=$(kubectl get pod -n "$NAMESPACE" -l "app=ws-${WORKSPACE_NAME}" -o jsonpath='{.items[0].metadata.name}')
+echo "Active Pod: ${OLD_POD}"
+
+# 2. Write random test payload with timestamp to XDG_DATA_HOME
+TEST_ID="PERSISTENCE_TEST_$(date +%s)_$RANDOM"
+TEST_FILE="/workspaces/.persistent_vscode/.local/share/antigravity/test_persistence_verify.txt"
+
+echo "Writing test payload to ${TEST_FILE}..."
+kubectl exec -n "$NAMESPACE" "$DEPLOYMENT" -- /bin/sh -c "mkdir -p /workspaces/.persistent_vscode/.local/share/antigravity && echo '${TEST_ID}' > ${TEST_FILE}"
+
+# 3. Calculate SHA256 checksum inside pod
+EXPECTED_SHA=$(kubectl exec -n "$NAMESPACE" "$DEPLOYMENT" -- /bin/sh -c "sha256sum ${TEST_FILE} | awk '{print \$1}'")
+echo "Expected SHA256 Payload Checksum: ${EXPECTED_SHA}"
+
+# 4. Destructive Restart: Force delete the active pod
+echo ""
+echo "💥 DESTRUCTIVE TEST: Force-deleting pod ${OLD_POD}..."
+kubectl delete pod -n "$NAMESPACE" "$OLD_POD" --now >/dev/null 2>&1 || true
+
+echo "Waiting for new pod to reach 1/1 Running..."
+sleep 5
+kubectl wait --for=condition=Ready pod -l "app=ws-${WORKSPACE_NAME}" -n "$NAMESPACE" --timeout=60s
+
+NEW_POD=$(kubectl get pod -n "$NAMESPACE" -l "app=ws-${WORKSPACE_NAME}" -o jsonpath='{.items[0].metadata.name}')
+echo "New Pod Spawned: ${NEW_POD}"
+
+# 5. Read payload from new pod and compute SHA256 checksum
+echo "Reading test payload from new pod..."
+ACTUAL_PAYLOAD=$(kubectl exec -n "$NAMESPACE" "$DEPLOYMENT" -- /bin/sh -c "cat ${TEST_FILE} 2>/dev/null" || true)
+ACTUAL_SHA=$(kubectl exec -n "$NAMESPACE" "$DEPLOYMENT" -- /bin/sh -c "sha256sum ${TEST_FILE} 2>/dev/null | awk '{print \$1}'" || true)
+
+echo ""
+echo "=========================================================================="
+echo " 📊 PERSISTENCE TEST RESULTS FOR ws-${WORKSPACE_NAME}"
+echo "=========================================================================="
+echo "Expected SHA256: ${EXPECTED_SHA}"
+echo "Actual SHA256:   ${ACTUAL_SHA}"
+echo "=========================================================================="
+
+if [ "$EXPECTED_SHA" = "$ACTUAL_SHA" ] && [ -n "$ACTUAL_SHA" ]; then
+    echo "✅ PERSISTENCE VERIFIED 100%! Data survived pod destruction intact."
+    exit 0
+else
+    echo "❌ PERSISTENCE TEST FAILED! SHA256 checksum mismatch or file missing."
+    exit 1
+fi
