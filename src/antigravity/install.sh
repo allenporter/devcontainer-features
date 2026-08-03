@@ -1,11 +1,9 @@
 #!/bin/bash
 set -e
 
-PORT="${PORT:-52425}"
-
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.3.3"
-echo "   Minimal Production-Grade Architecture"
+echo " Installing Antigravity DevContainer Feature v1.4.0"
+echo "   Native Kubernetes SubPath Persistence (Zero Hacks)"
 echo "======================================================="
 
 # Install Linux D-Bus, secret-service keyring, and libsecret
@@ -30,34 +28,13 @@ cp squashfs-root/resources/bin/language_server /usr/local/bin/language_server
 chmod 755 /usr/local/bin/language_server
 cd / && rm -rf "$TMP_DIR"
 
-# Global environment profile setup for native XDG persistence
-cat << 'EOF' > /etc/profile.d/antigravity-env.sh
-if [ -n "${REMOTE_USER}" ]; then
-    TARGET_USER="${REMOTE_USER}"
-elif [ -d "/home/vscode" ]; then
-    TARGET_USER="vscode"
-elif [ -d "/home/admin" ]; then
-    TARGET_USER="admin"
-else
-    TARGET_USER="$(whoami)"
-fi
-
-if [ -d "/workspaces" ]; then
-    export XDG_DATA_HOME="/workspaces/.persistent_${TARGET_USER}/.local/share"
-    export XDG_CONFIG_HOME="/workspaces/.persistent_${TARGET_USER}/.config"
-fi
-EOF
-chmod +x /etc/profile.d/antigravity-env.sh
-
 # Create headless xdg-open OAuth handler
 cat << 'EOF' > /usr/local/bin/xdg-open
 #!/bin/bash
-[ -f /etc/profile.d/antigravity-env.sh ] && . /etc/profile.d/antigravity-env.sh
-XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
-mkdir -p "${XDG_DATA_HOME}/antigravity"
+mkdir -p ~/.gemini/antigravity
 
 URL_LINE="$@"
-echo "AUTH_URL: ${URL_LINE}" >> "${XDG_DATA_HOME}/antigravity/auth_urls.log"
+echo "AUTH_URL: ${URL_LINE}" >> ~/.gemini/antigravity/auth_urls.log
 echo "${URL_LINE}" > /tmp/antigravity-auth.url
 
 CALLBACK_PORT=$(echo "${URL_LINE}" | grep -oE 'redirect_uri=http(%3A%2F%2F|://)localhost(%3A|:)[0-9]+' | grep -oE '[0-9]+$' || true)
@@ -74,14 +51,11 @@ chmod +x /usr/local/bin/xdg-open
 # Create easy agy-auth helper script
 cat << 'EOF' > /usr/local/bin/agy-auth
 #!/bin/bash
-[ -f /etc/profile.d/antigravity-env.sh ] && . /etc/profile.d/antigravity-env.sh
-XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
-
-if [ -f "${XDG_DATA_HOME}/antigravity/auth_urls.log" ]; then
+if [ -f ~/.gemini/antigravity/auth_urls.log ]; then
     echo "=========================================================================="
     echo "🔑 Latest Antigravity OAuth URL:"
     echo "=========================================================================="
-    tail -n 2 "${XDG_DATA_HOME}/antigravity/auth_urls.log"
+    tail -n 2 ~/.gemini/antigravity/auth_urls.log
     echo "=========================================================================="
 else
     echo "No OAuth URL logged yet. Open your workspace HTTP URL in browser and click Sign In."
@@ -93,11 +67,7 @@ ln -sf /usr/local/bin/agy-auth /usr/local/bin/antigravity-auth
 # Create start-antigravity daemon launcher
 cat << 'EOF' > /usr/local/bin/start-antigravity
 #!/bin/bash
-[ -f /etc/profile.d/antigravity-env.sh ] && . /etc/profile.d/antigravity-env.sh
-XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
-XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
-
-mkdir -p "${XDG_DATA_HOME}/keyrings" "${XDG_DATA_HOME}/antigravity" "${XDG_CONFIG_HOME}"
+mkdir -p ~/.local/share/keyrings ~/.gemini/antigravity
 
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
     eval $(dbus-launch --sh-syntax)
@@ -111,8 +81,6 @@ export GNOME_KEYRING_CONTROL
 pkill -9 -f language_server || true
 sleep 1
 
-export PATH="/usr/local/bin:${XDG_DATA_HOME}/antigravity/bin:$PATH"
-
 nohup /usr/local/bin/language_server \
   --standalone \
   --override_ide_name antigravity \
@@ -125,7 +93,7 @@ nohup /usr/local/bin/language_server \
   --app_data_dir antigravity \
   --api_server_url https://generativelanguage.googleapis.com \
   --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com \
-  --enable_sidecars > "${XDG_DATA_HOME}/antigravity/language_server.log" 2>&1 &
+  --enable_sidecars > ~/.gemini/antigravity/language_server.log 2>&1 &
 
 echo "Antigravity daemon started on port 52425 (HTTP 52424)"
 EOF

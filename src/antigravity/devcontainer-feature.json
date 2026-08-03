@@ -1,8 +1,8 @@
 {
   "id": "antigravity",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "name": "Antigravity Language Server",
-  "description": "Installs and launches the Google Antigravity 2.0 language_server daemon inside DevContainers with native XDG PVC persistence.",
+  "description": "Installs and launches the Google Antigravity 2.0 language_server daemon inside DevContainers with native Kubernetes subPath persistence.",
   "options": {},
   "entrypoint": "/usr/local/bin/start-antigravity",
   "installsAfter": [
