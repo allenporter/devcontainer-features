@@ -4,7 +4,7 @@ set -e
 PORT="${PORT:-52425}"
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.2.9"
+echo " Installing Antigravity DevContainer Feature v1.3.0"
 echo "   Persistent Keyring & Auth Session Storage Enabled"
 echo "======================================================="
 
@@ -112,28 +112,28 @@ USER_HOME=$(eval echo "~${TARGET_USER}")
 # Symlink keyring & antigravity configs to persistent PVC volume if /workspaces is mounted
 if [ -d "/workspaces" ]; then
     PERSISTENT_DIR="/workspaces/.persistent_${TARGET_USER}"
-    mkdir -p "${PERSISTENT_DIR}/.local/share/keyrings"
-    mkdir -p "${PERSISTENT_DIR}/.gemini/antigravity"
+    sudo mkdir -p "${PERSISTENT_DIR}/.local/share/keyrings" "${PERSISTENT_DIR}/.gemini/antigravity"
+    sudo chown -R "${TARGET_USER}:${TARGET_USER}" "${PERSISTENT_DIR}"
 
-    mkdir -p "${USER_HOME}/.local/share"
-    mkdir -p "${USER_HOME}/.gemini"
+    sudo mkdir -p "${USER_HOME}/.local/share" "${USER_HOME}/.gemini"
 
     if [ ! -L "${USER_HOME}/.local/share/keyrings" ]; then
         if [ -d "${USER_HOME}/.local/share/keyrings" ]; then
-            cp -rn "${USER_HOME}/.local/share/keyrings/"* "${PERSISTENT_DIR}/.local/share/keyrings/" 2>/dev/null || true
-            rm -rf "${USER_HOME}/.local/share/keyrings"
+            sudo cp -rn "${USER_HOME}/.local/share/keyrings/"* "${PERSISTENT_DIR}/.local/share/keyrings/" 2>/dev/null || true
+            sudo rm -rf "${USER_HOME}/.local/share/keyrings"
         fi
-        ln -s "${PERSISTENT_DIR}/.local/share/keyrings" "${USER_HOME}/.local/share/keyrings"
+        sudo ln -sf "${PERSISTENT_DIR}/.local/share/keyrings" "${USER_HOME}/.local/share/keyrings"
+        sudo chown -h "${TARGET_USER}:${TARGET_USER}" "${USER_HOME}/.local/share/keyrings"
     fi
 
     if [ ! -L "${USER_HOME}/.gemini/antigravity" ]; then
         if [ -d "${USER_HOME}/.gemini/antigravity" ]; then
-            cp -rn "${USER_HOME}/.gemini/antigravity/"* "${PERSISTENT_DIR}/.gemini/antigravity/" 2>/dev/null || true
-            rm -rf "${USER_HOME}/.gemini/antigravity"
+            sudo cp -rn "${USER_HOME}/.gemini/antigravity/"* "${PERSISTENT_DIR}/.gemini/antigravity/" 2>/dev/null || true
+            sudo rm -rf "${USER_HOME}/.gemini/antigravity"
         fi
-        ln -s "${PERSISTENT_DIR}/.gemini/antigravity" "${USER_HOME}/.gemini/antigravity"
+        sudo ln -sf "${PERSISTENT_DIR}/.gemini/antigravity" "${USER_HOME}/.gemini/antigravity"
+        sudo chown -h "${TARGET_USER}:${TARGET_USER}" "${USER_HOME}/.gemini/antigravity"
     fi
-    chown -R "${TARGET_USER}:${TARGET_USER}" "${PERSISTENT_DIR}" "${USER_HOME}/.local" "${USER_HOME}/.gemini" 2>/dev/null || true
 else
     mkdir -p "${USER_HOME}/.gemini/antigravity"
     mkdir -p "${USER_HOME}/.local/share/keyrings"
