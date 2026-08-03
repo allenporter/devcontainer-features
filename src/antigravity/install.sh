@@ -4,16 +4,15 @@ set -e
 PORT="${PORT:-52425}"
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.3.2"
-echo "   Native XDG Environment Storage Persistence Enabled"
+echo " Installing Antigravity DevContainer Feature v1.3.3"
+echo "   Minimal Production-Grade Architecture"
 echo "======================================================="
 
-# Install Linux D-Bus, secret-service keyring, and openssh-server
+# Install Linux D-Bus, secret-service keyring, and libsecret
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
-    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq openssh-server
+    dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq
 rm -rf /var/lib/apt/lists/*
-mkdir -p /var/run/sshd
 
 # Fetch latest Linux x86_64 AppImage URL from Google updater manifest
 MANIFEST_URL="https://antigravity-hub-auto-updater-974169037036.us-central1.run.app/manifest/latest-x64-linux.yml"
@@ -31,9 +30,8 @@ cp squashfs-root/resources/bin/language_server /usr/local/bin/language_server
 chmod 755 /usr/local/bin/language_server
 cd / && rm -rf "$TMP_DIR"
 
-# Create headless xdg-open OAuth handler
-cat << 'EOF' > /usr/local/bin/xdg-open
-#!/bin/bash
+# Global environment profile setup for native XDG persistence
+cat << 'EOF' > /etc/profile.d/antigravity-env.sh
 if [ -n "${REMOTE_USER}" ]; then
     TARGET_USER="${REMOTE_USER}"
 elif [ -d "/home/vscode" ]; then
@@ -44,22 +42,24 @@ else
     TARGET_USER="$(whoami)"
 fi
 
-PERSIST_BASE="/workspaces/.persistent_${TARGET_USER}"
 if [ -d "/workspaces" ]; then
-    export XDG_DATA_HOME="${PERSIST_BASE}/.local/share"
-    export XDG_CONFIG_HOME="${PERSIST_BASE}/.config"
-else
-    USER_HOME=$(eval echo "~${TARGET_USER}")
-    export XDG_DATA_HOME="${USER_HOME}/.local/share"
-    export XDG_CONFIG_HOME="${USER_HOME}/.config"
+    export XDG_DATA_HOME="/workspaces/.persistent_${TARGET_USER}/.local/share"
+    export XDG_CONFIG_HOME="/workspaces/.persistent_${TARGET_USER}/.config"
 fi
+EOF
+chmod +x /etc/profile.d/antigravity-env.sh
+
+# Create headless xdg-open OAuth handler
+cat << 'EOF' > /usr/local/bin/xdg-open
+#!/bin/bash
+[ -f /etc/profile.d/antigravity-env.sh ] && . /etc/profile.d/antigravity-env.sh
+XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 mkdir -p "${XDG_DATA_HOME}/antigravity"
 
 URL_LINE="$@"
 echo "AUTH_URL: ${URL_LINE}" >> "${XDG_DATA_HOME}/antigravity/auth_urls.log"
 echo "${URL_LINE}" > /tmp/antigravity-auth.url
 
-# Extract OAuth callback port from redirect_uri
 CALLBACK_PORT=$(echo "${URL_LINE}" | grep -oE 'redirect_uri=http(%3A%2F%2F|://)localhost(%3A|:)[0-9]+' | grep -oE '[0-9]+$' || true)
 
 echo "" >&2
@@ -74,23 +74,8 @@ chmod +x /usr/local/bin/xdg-open
 # Create easy agy-auth helper script
 cat << 'EOF' > /usr/local/bin/agy-auth
 #!/bin/bash
-if [ -n "${REMOTE_USER}" ]; then
-    TARGET_USER="${REMOTE_USER}"
-elif [ -d "/home/vscode" ]; then
-    TARGET_USER="vscode"
-elif [ -d "/home/admin" ]; then
-    TARGET_USER="admin"
-else
-    TARGET_USER="$(whoami)"
-fi
-
-PERSIST_BASE="/workspaces/.persistent_${TARGET_USER}"
-if [ -d "/workspaces" ]; then
-    export XDG_DATA_HOME="${PERSIST_BASE}/.local/share"
-else
-    USER_HOME=$(eval echo "~${TARGET_USER}")
-    export XDG_DATA_HOME="${USER_HOME}/.local/share"
-fi
+[ -f /etc/profile.d/antigravity-env.sh ] && . /etc/profile.d/antigravity-env.sh
+XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 
 if [ -f "${XDG_DATA_HOME}/antigravity/auth_urls.log" ]; then
     echo "=========================================================================="
@@ -108,25 +93,9 @@ ln -sf /usr/local/bin/agy-auth /usr/local/bin/antigravity-auth
 # Create start-antigravity daemon launcher
 cat << 'EOF' > /usr/local/bin/start-antigravity
 #!/bin/bash
-if [ -n "${REMOTE_USER}" ]; then
-    TARGET_USER="${REMOTE_USER}"
-elif [ -d "/home/vscode" ]; then
-    TARGET_USER="vscode"
-elif [ -d "/home/admin" ]; then
-    TARGET_USER="admin"
-else
-    TARGET_USER="$(whoami)"
-fi
-
-PERSIST_BASE="/workspaces/.persistent_${TARGET_USER}"
-if [ -d "/workspaces" ]; then
-    export XDG_DATA_HOME="${PERSIST_BASE}/.local/share"
-    export XDG_CONFIG_HOME="${PERSIST_BASE}/.config"
-else
-    USER_HOME=$(eval echo "~${TARGET_USER}")
-    export XDG_DATA_HOME="${USER_HOME}/.local/share"
-    export XDG_CONFIG_HOME="${USER_HOME}/.config"
-fi
+[ -f /etc/profile.d/antigravity-env.sh ] && . /etc/profile.d/antigravity-env.sh
+XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 
 mkdir -p "${XDG_DATA_HOME}/keyrings" "${XDG_DATA_HOME}/antigravity" "${XDG_CONFIG_HOME}"
 
