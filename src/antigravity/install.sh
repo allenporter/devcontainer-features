@@ -4,8 +4,8 @@ set -e
 PORT="${PORT:-52425}"
 
 echo "======================================================="
-echo " Installing Antigravity DevContainer Feature v1.3.0"
-echo "   Persistent Keyring & Auth Session Storage Enabled"
+echo " Installing Antigravity DevContainer Feature v1.3.1"
+echo "   Native XDG Environment Storage Persistence Enabled"
 echo "======================================================="
 
 # Install Linux D-Bus, secret-service keyring, socat, and openssh-server
@@ -43,18 +43,27 @@ elif [ -d "/home/admin" ]; then
 else
     TARGET_USER="$(whoami)"
 fi
-USER_HOME=$(eval echo "~${TARGET_USER}")
-mkdir -p "${USER_HOME}/.gemini/antigravity"
+
+PERSIST_BASE="/workspaces/.persistent_${TARGET_USER}"
+if [ -d "/workspaces" ]; then
+    export XDG_DATA_HOME="${PERSIST_BASE}/.local/share"
+    export XDG_CONFIG_HOME="${PERSIST_BASE}/.config"
+else
+    USER_HOME=$(eval echo "~${TARGET_USER}")
+    export XDG_DATA_HOME="${USER_HOME}/.local/share"
+    export XDG_CONFIG_HOME="${USER_HOME}/.config"
+fi
+mkdir -p "${XDG_DATA_HOME}/antigravity"
 
 URL_LINE="$@"
-echo "AUTH_URL: ${URL_LINE}" >> "${USER_HOME}/.gemini/antigravity/auth_urls.log"
+echo "AUTH_URL: ${URL_LINE}" >> "${XDG_DATA_HOME}/antigravity/auth_urls.log"
 echo "${URL_LINE}" > /tmp/antigravity-auth.url
 
 # Extract OAuth callback port from redirect_uri
 CALLBACK_PORT=$(echo "${URL_LINE}" | grep -oE 'redirect_uri=http(%3A%2F%2F|://)localhost(%3A|:)[0-9]+' | grep -oE '[0-9]+$' || true)
 
 if [ -n "${CALLBACK_PORT}" ]; then
-    echo "Auto-binding socat 0.0.0.0:${CALLBACK_PORT} -> 127.0.0.1:${CALLBACK_PORT}" >> "${USER_HOME}/.gemini/antigravity/auth_urls.log"
+    echo "Auto-binding socat 0.0.0.0:${CALLBACK_PORT} -> 127.0.0.1:${CALLBACK_PORT}" >> "${XDG_DATA_HOME}/antigravity/auth_urls.log"
     pkill -f "socat TCP-LISTEN:${CALLBACK_PORT}" || true
     nohup socat TCP-LISTEN:${CALLBACK_PORT},fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:${CALLBACK_PORT} >/dev/null 2>&1 &
 fi
@@ -80,13 +89,20 @@ elif [ -d "/home/admin" ]; then
 else
     TARGET_USER="$(whoami)"
 fi
-USER_HOME=$(eval echo "~${TARGET_USER}")
 
-if [ -f "${USER_HOME}/.gemini/antigravity/auth_urls.log" ]; then
+PERSIST_BASE="/workspaces/.persistent_${TARGET_USER}"
+if [ -d "/workspaces" ]; then
+    export XDG_DATA_HOME="${PERSIST_BASE}/.local/share"
+else
+    USER_HOME=$(eval echo "~${TARGET_USER}")
+    export XDG_DATA_HOME="${USER_HOME}/.local/share"
+fi
+
+if [ -f "${XDG_DATA_HOME}/antigravity/auth_urls.log" ]; then
     echo "=========================================================================="
     echo "🔑 Latest Antigravity OAuth URL:"
     echo "=========================================================================="
-    tail -n 2 "${USER_HOME}/.gemini/antigravity/auth_urls.log"
+    tail -n 2 "${XDG_DATA_HOME}/antigravity/auth_urls.log"
     echo "=========================================================================="
 else
     echo "No OAuth URL logged yet. Open your workspace HTTP URL in browser and click Sign In."
@@ -107,37 +123,18 @@ elif [ -d "/home/admin" ]; then
 else
     TARGET_USER="$(whoami)"
 fi
-USER_HOME=$(eval echo "~${TARGET_USER}")
 
-# Symlink keyring & antigravity configs to persistent PVC volume if /workspaces is mounted
+PERSIST_BASE="/workspaces/.persistent_${TARGET_USER}"
 if [ -d "/workspaces" ]; then
-    PERSISTENT_DIR="/workspaces/.persistent_${TARGET_USER}"
-    sudo mkdir -p "${PERSISTENT_DIR}/.local/share/keyrings" "${PERSISTENT_DIR}/.gemini/antigravity"
-    sudo chown -R "${TARGET_USER}:${TARGET_USER}" "${PERSISTENT_DIR}"
-
-    sudo mkdir -p "${USER_HOME}/.local/share" "${USER_HOME}/.gemini"
-
-    if [ ! -L "${USER_HOME}/.local/share/keyrings" ]; then
-        if [ -d "${USER_HOME}/.local/share/keyrings" ]; then
-            sudo cp -rn "${USER_HOME}/.local/share/keyrings/"* "${PERSISTENT_DIR}/.local/share/keyrings/" 2>/dev/null || true
-            sudo rm -rf "${USER_HOME}/.local/share/keyrings"
-        fi
-        sudo ln -sf "${PERSISTENT_DIR}/.local/share/keyrings" "${USER_HOME}/.local/share/keyrings"
-        sudo chown -h "${TARGET_USER}:${TARGET_USER}" "${USER_HOME}/.local/share/keyrings"
-    fi
-
-    if [ ! -L "${USER_HOME}/.gemini/antigravity" ]; then
-        if [ -d "${USER_HOME}/.gemini/antigravity" ]; then
-            sudo cp -rn "${USER_HOME}/.gemini/antigravity/"* "${PERSISTENT_DIR}/.gemini/antigravity/" 2>/dev/null || true
-            sudo rm -rf "${USER_HOME}/.gemini/antigravity"
-        fi
-        sudo ln -sf "${PERSISTENT_DIR}/.gemini/antigravity" "${USER_HOME}/.gemini/antigravity"
-        sudo chown -h "${TARGET_USER}:${TARGET_USER}" "${USER_HOME}/.gemini/antigravity"
-    fi
+    export XDG_DATA_HOME="${PERSIST_BASE}/.local/share"
+    export XDG_CONFIG_HOME="${PERSIST_BASE}/.config"
 else
-    mkdir -p "${USER_HOME}/.gemini/antigravity"
-    mkdir -p "${USER_HOME}/.local/share/keyrings"
+    USER_HOME=$(eval echo "~${TARGET_USER}")
+    export XDG_DATA_HOME="${USER_HOME}/.local/share"
+    export XDG_CONFIG_HOME="${USER_HOME}/.config"
 fi
+
+mkdir -p "${XDG_DATA_HOME}/keyrings" "${XDG_DATA_HOME}/antigravity" "${XDG_CONFIG_HOME}"
 
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
     eval $(dbus-launch --sh-syntax)
@@ -152,7 +149,7 @@ pkill -9 -f language_server || true
 pkill -9 -f socat || true
 sleep 1
 
-export PATH="/usr/local/bin:${USER_HOME}/.gemini/antigravity/bin:$PATH"
+export PATH="/usr/local/bin:${XDG_DATA_HOME}/antigravity/bin:$PATH"
 
 nohup /usr/local/bin/language_server \
   --standalone \
@@ -166,7 +163,7 @@ nohup /usr/local/bin/language_server \
   --app_data_dir antigravity \
   --api_server_url https://generativelanguage.googleapis.com \
   --cloud_code_endpoint https://daily-cloudcode-pa.googleapis.com \
-  --enable_sidecars > "${USER_HOME}/.gemini/antigravity/language_server.log" 2>&1 &
+  --enable_sidecars > "${XDG_DATA_HOME}/antigravity/language_server.log" 2>&1 &
 
 sleep 1
 nohup socat TCP-LISTEN:43635,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:52424 >/dev/null 2>&1 &
