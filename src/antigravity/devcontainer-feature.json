@@ -1,9 +1,18 @@
 {
     "id": "antigravity",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "name": "Antigravity Language Server",
     "description": "Installs the Google Antigravity language server daemon for remote devcontainer environments",
-    "options": {},
+    "options": {
+        "version": {
+            "type": "string",
+            "proposals": [
+                "latest"
+            ],
+            "default": "latest",
+            "description": "The Antigravity version to install (e.g. latest, 2.8.1)"
+        }
+    },
     "installsAfter": [
         "ghcr.io/devcontainers/features/common-utils"
     ]

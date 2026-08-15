@@ -16,16 +16,26 @@ rm -rf /var/lib/apt/lists/*
 MANIFEST_URL="https://antigravity-hub-auto-updater-974169037036.us-central1.run.app/manifest/latest-x64-linux.yml"
 MANIFEST_CONTENT=$(curl -sSL "$MANIFEST_URL")
 APPIMAGE_URL=$(echo "$MANIFEST_CONTENT" | grep -o 'https://.*Antigravity\.AppImage' | head -n 1)
-VERSION=$(echo "$MANIFEST_CONTENT" | grep -i '^version:' | head -n 1 | awk '{print $2}' | tr -d '"' | tr -d "'")
+STABLE_VERSION=$(echo "$MANIFEST_CONTENT" | grep -i '^version:' | head -n 1 | awk '{print $2}' | tr -d '"' | tr -d "'")
 
-if [ -z "$VERSION" ]; then
-    VERSION="2.6.0"
+REQUESTED_VERSION="${VERSION:-${version:-"latest"}}"
+if [ "$REQUESTED_VERSION" = "latest" ] || [ -z "$REQUESTED_VERSION" ]; then
+    TARGET_VERSION="$STABLE_VERSION"
+else
+    TARGET_VERSION="$REQUESTED_VERSION"
+    if [ "$REQUESTED_VERSION" != "$STABLE_VERSION" ]; then
+        echo "WARNING: Requested version (${REQUESTED_VERSION}) differs from latest stable (${STABLE_VERSION}). Using latest available build URL."
+    fi
+fi
+
+if [ -z "$TARGET_VERSION" ]; then
+    TARGET_VERSION="2.8.1"
 fi
 
 mkdir -p /etc/antigravity
-echo "$VERSION" > /etc/antigravity/version
+echo "$TARGET_VERSION" > /etc/antigravity/version
 
-echo "Downloading Antigravity language_server (v${VERSION}) from: ${APPIMAGE_URL}"
+echo "Downloading Antigravity language_server (v${TARGET_VERSION}) from: ${APPIMAGE_URL}"
 
 TMP_DIR=$(mktemp -d)
 cd "$TMP_DIR"
