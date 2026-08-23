@@ -2,7 +2,7 @@
 set -e
 
 echo "======================================================="
-echo " Installing Antigravity Remote Control Feature v1.2.0"
+echo " Installing Antigravity Remote Control Feature"
 echo "  Google Official CLI Installer & Hybrid Daemon"
 echo "======================================================="
 
@@ -47,7 +47,8 @@ else
 fi
 
 if [ -z "$TARGET_VERSION" ]; then
-    TARGET_VERSION="2.9.1"
+    echo "Fatal: Could not determine Antigravity version from manifest." >&2
+    exit 1
 fi
 
 mkdir -p /etc/antigravity
@@ -120,7 +121,7 @@ fi
 pkill -9 -f language_server || true
 sleep 1
 
-AGY_VERSION=$(cat /etc/antigravity/version 2>/dev/null || echo "2.9.1")
+AGY_VERSION=$(cat /etc/antigravity/version 2>/dev/null || true)
 
 EXTRA_ARGS=()
 if [ "$ENABLE_LOCAL_INTERFACE" = "true" ]; then
