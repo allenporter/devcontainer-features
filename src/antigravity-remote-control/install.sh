@@ -23,7 +23,7 @@ ln -sf /usr/local/bin/agy /usr/local/bin/antigravity || true
 # 2. Save Feature Options
 ENABLE_LOCAL="${ENABLELOCALINTERFACE:-${enablelocalinterface:-"true"}}"
 ENABLE_REMOTE="${ENABLEREMOTECONTROL:-${enableremotecontrol:-"true"}}"
-HUB_PORT="${HUBPORT:-${hubport:-"52425"}}"
+HUB_PORT="${HUBPORT:-${hubport:-"52424"}}"
 CUSTOM_HOSTNAME="${HOSTNAME:-${hostname:-""}}"
 
 mkdir -p /etc/antigravity
@@ -45,7 +45,7 @@ fi
 
 ENABLE_LOCAL_INTERFACE="${ENABLE_LOCAL_INTERFACE:-"true"}"
 ENABLE_REMOTE_CONTROL="${ENABLE_REMOTE_CONTROL:-"true"}"
-HUB_PORT="${HUB_PORT:-"52425"}"
+HUB_PORT="${HUB_PORT:-"52424"}"
 
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
     eval $(dbus-launch --sh-syntax)
