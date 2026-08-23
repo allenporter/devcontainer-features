@@ -1,0 +1,35 @@
+{
+    "id": "antigravity-remote-control",
+    "version": "1.1.0",
+    "name": "Antigravity Remote Control & Web UI",
+    "description": "Installs Google Antigravity with support for local Web Ingress, Google Remote Control cloud tunnel, or both simultaneously.",
+    "options": {
+        "version": {
+            "type": "string",
+            "proposals": [
+                "latest",
+                "2.9.1"
+            ],
+            "default": "latest",
+            "description": "The Antigravity version to install (e.g. latest, 2.9.1)"
+        },
+        "enableLocalInterface": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable local HTTP/HTTPS server on port 52425 for internal Ingress / LAN access"
+        },
+        "enableRemoteControl": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable outbound Google cloud proxy tunnel for access via antigravity.google"
+        },
+        "hostname": {
+            "type": "string",
+            "default": "",
+            "description": "Custom instance nickname for this devcontainer in the antigravity.google dashboard"
+        }
+    },
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/common-utils"
+    ]
+}
