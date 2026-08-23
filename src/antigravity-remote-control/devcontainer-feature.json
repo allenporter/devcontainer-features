@@ -1,23 +1,23 @@
 {
     "id": "antigravity-remote-control",
-    "version": "1.5.1",
+    "version": "1.6.0",
     "name": "Antigravity Remote Control & Hub",
-    "description": "Installs Google Antigravity via the official CLI installer with support for Google Remote Control (antigravity.google) and local Ingress Hub.",
+    "description": "Installs Google Antigravity Language Server (v2.9.1) and native agy CLI with full Remote Control & Web UI Hub support.",
     "options": {
+        "version": {
+            "type": "string",
+            "default": "latest",
+            "description": "Target version of the Antigravity language server engine"
+        },
         "enableRemoteControl": {
             "type": "boolean",
             "default": true,
-            "description": "Enable outbound Google cloud proxy tunnel for access via antigravity.google"
+            "description": "Enable Google cloud proxy tunnel for access via antigravity.google"
         },
         "enableLocalInterface": {
             "type": "boolean",
             "default": true,
-            "description": "Enable local Web UI hub server on hubPort (default 52424) for internal Ingress / LAN access"
-        },
-        "hubPort": {
-            "type": "string",
-            "default": "52424",
-            "description": "Port to serve the local Web UI hub on (defaults to 52424 to match Kubernetes Ingress bridge)"
+            "description": "Enable local Web UI hub server on port 52424/52425"
         },
         "hostname": {
             "type": "string",
