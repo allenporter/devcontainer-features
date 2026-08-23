@@ -2,11 +2,10 @@
 set -e
 
 echo "======================================================="
-echo " Installing Antigravity Remote Control & Web Feature"
-echo "  Hybrid Support: Local Ingress + antigravity.google"
+echo " Installing Antigravity Remote Control Feature v1.2.0"
+echo "  Google Official CLI Installer & Hybrid Daemon"
 echo "======================================================="
 
-# Install Linux D-Bus, secret-service keyring, and libsecret
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
     dbus-x11 gnome-keyring libsecret-1-0 curl ca-certificates jq git
@@ -15,7 +14,23 @@ rm -rf /var/lib/apt/lists/*
 # Configure system-wide git safe directory to avoid dubious ownership errors on mounted PVCs
 git config --system --add safe.directory "*" || true
 
-# Fetch latest Linux x86_64 AppImage URL and version from Google updater manifest
+# 1. Install official Google Antigravity CLI (agy)
+echo "Installing official Google Antigravity CLI via https://antigravity.google/cli/install.sh..."
+if ! curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin; then
+    echo "Direct installer script failed, downloading release archive directly from manifest..."
+    CLI_MANIFEST=$(curl -sSL "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_amd64.json")
+    CLI_URL=$(echo "$CLI_MANIFEST" | jq -r '.url')
+    TMP_CLI=$(mktemp -d)
+    curl -sSL -o "${TMP_CLI}/cli.tar.gz" "$CLI_URL"
+    tar -xzf "${TMP_CLI}/cli.tar.gz" -C "${TMP_CLI}"
+    cp "${TMP_CLI}/antigravity" /usr/local/bin/agy
+    chmod 755 /usr/local/bin/agy
+    rm -rf "$TMP_CLI"
+fi
+
+ln -sf /usr/local/bin/agy /usr/local/bin/antigravity || true
+
+# 2. Install Antigravity language_server daemon
 MANIFEST_URL="https://antigravity-hub-auto-updater-974169037036.us-central1.run.app/manifest/latest-x64-linux.yml"
 MANIFEST_CONTENT=$(curl -sSL "$MANIFEST_URL")
 APPIMAGE_URL=$(echo "$MANIFEST_CONTENT" | grep -o 'https://.*Antigravity\.AppImage' | head -n 1)
@@ -61,27 +76,7 @@ cp squashfs-root/resources/bin/language_server /usr/local/bin/language_server
 chmod 755 /usr/local/bin/language_server
 cd / && rm -rf "$TMP_DIR"
 
-# Create headless xdg-open OAuth handler (logs URLs for manual CLI auth if needed)
-cat << 'EOF' > /usr/local/bin/xdg-open
-#!/bin/bash
-mkdir -p ~/.gemini/antigravity
-
-URL_LINE="$@"
-echo "AUTH_URL: ${URL_LINE}" >> ~/.gemini/antigravity/auth_urls.log
-echo "${URL_LINE}" > /tmp/antigravity-auth.url
-
-CALLBACK_PORT=$(echo "${URL_LINE}" | grep -oE 'redirect_uri=http(%3A%2F%2F|://)localhost(%3A|:)[0-9]+' | grep -oE '[0-9]+$' || true)
-
-echo "" >&2
-echo "==========================================================================" >&2
-echo "🔑 ANTIGRAVITY OAUTH URL DETECTED (Callback Port: ${CALLBACK_PORT}):" >&2
-echo "${URL_LINE}" >&2
-echo "==========================================================================" >&2
-echo "" >&2
-EOF
-chmod +x /usr/local/bin/xdg-open
-
-# Create start-antigravity daemon launcher supporting both local and remote control
+# 3. Create start-antigravity daemon launcher
 cat << 'EOF' > /usr/local/bin/start-antigravity
 #!/bin/bash
 mkdir -p ~/.local/share/keyrings ~/.gemini/antigravity
@@ -154,7 +149,7 @@ EOF
 chmod +x /usr/local/bin/start-antigravity
 ln -sf /usr/local/bin/start-antigravity /usr/local/bin/start-antigravity-remote
 
-# Create profile autostart hook
+# 4. Create profile autostart hook
 cat << 'EOF' > /etc/profile.d/antigravity-autostart.sh
 if [ -x /usr/local/bin/start-antigravity ] && ! pgrep -x language_server >/dev/null 2>&1; then
     /usr/local/bin/start-antigravity >/dev/null 2>&1 &
@@ -162,4 +157,4 @@ fi
 EOF
 chmod +x /etc/profile.d/antigravity-autostart.sh
 
-echo "Antigravity Remote Control & Web Feature installed successfully!"
+echo "Antigravity Remote Control Feature installed successfully!"
