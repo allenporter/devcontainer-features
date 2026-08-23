@@ -42,7 +42,7 @@ if [ "$REQUESTED_VERSION" = "latest" ] || [ -z "$REQUESTED_VERSION" ]; then
 else
     TARGET_VERSION="$REQUESTED_VERSION"
     if [ "$REQUESTED_VERSION" != "$STABLE_VERSION" ]; then
-        echo "WARNING: Requested version (${REQUESTED_VERSION}) differs from latest stable (${STABLE_VERSION}). Using latest available build URL."
+        echo "Note: Requested version (${REQUESTED_VERSION}) differs from latest stable (${STABLE_VERSION})."
     fi
 fi
 
@@ -50,6 +50,12 @@ if [ -z "$TARGET_VERSION" ]; then
     echo "Fatal: Could not determine Antigravity version from manifest." >&2
     exit 1
 fi
+
+echo "-------------------------------------------------------"
+echo " Requested Version : ${REQUESTED_VERSION}"
+echo " Resolved Version  : ${TARGET_VERSION} (Latest Stable: ${STABLE_VERSION})"
+echo " Package URL       : ${APPIMAGE_URL}"
+echo "-------------------------------------------------------"
 
 mkdir -p /etc/antigravity
 echo "$TARGET_VERSION" > /etc/antigravity/version
