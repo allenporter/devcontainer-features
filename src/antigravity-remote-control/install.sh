@@ -3,7 +3,7 @@ set -e
 
 echo "======================================================="
 echo " Installing Antigravity Remote Control Feature"
-echo "  Pure Native Google CLI Daemon (antigravity.google)"
+echo "  Google CLI + Engine (Hybrid Ingress & Remote Control)"
 echo "======================================================="
 
 export DEBIAN_FRONTEND=noninteractive
@@ -30,19 +30,60 @@ fi
 
 ln -sf /usr/local/bin/agy /usr/local/bin/antigravity || true
 
-# Save feature options
+# 2. Install Antigravity Language Server Engine
+MANIFEST_URL="https://antigravity-hub-auto-updater-974169037036.us-central1.run.app/manifest/latest-x64-linux.yml"
+MANIFEST_CONTENT=$(curl -sSL "$MANIFEST_URL")
+APPIMAGE_URL=$(echo "$MANIFEST_CONTENT" | grep -o 'https://.*Antigravity\.AppImage' | head -n 1)
+STABLE_VERSION=$(echo "$MANIFEST_CONTENT" | grep -i '^version:' | head -n 1 | awk '{print $2}' | tr -d '"' | tr -d "'")
+
+REQUESTED_VERSION="${VERSION:-${version:-"latest"}}"
+if [ "$REQUESTED_VERSION" = "latest" ] || [ -z "$REQUESTED_VERSION" ]; then
+    TARGET_VERSION="$STABLE_VERSION"
+else
+    TARGET_VERSION="$REQUESTED_VERSION"
+    if [ "$REQUESTED_VERSION" != "$STABLE_VERSION" ]; then
+        echo "Note: Requested version (${REQUESTED_VERSION}) differs from latest stable (${STABLE_VERSION})."
+    fi
+fi
+
+if [ -z "$TARGET_VERSION" ]; then
+    echo "Fatal: Could not determine Antigravity version from manifest." >&2
+    exit 1
+fi
+
+echo "-------------------------------------------------------"
+echo " Requested Version : ${REQUESTED_VERSION}"
+echo " Resolved Version  : ${TARGET_VERSION} (Latest Stable: ${STABLE_VERSION})"
+echo " Package URL       : ${APPIMAGE_URL}"
+echo "-------------------------------------------------------"
+
+mkdir -p /etc/antigravity
+echo "$TARGET_VERSION" > /etc/antigravity/version
+
 ENABLE_LOCAL="${ENABLELOCALINTERFACE:-${enablelocalinterface:-"true"}}"
 ENABLE_REMOTE="${ENABLEREMOTECONTROL:-${enableremotecontrol:-"true"}}"
 CUSTOM_HOSTNAME="${HOSTNAME:-${hostname:-""}}"
 
-mkdir -p /etc/antigravity
 cat << EOF > /etc/antigravity/options.env
 ENABLE_LOCAL_INTERFACE="${ENABLE_LOCAL}"
 ENABLE_REMOTE_CONTROL="${ENABLE_REMOTE}"
 CUSTOM_HOSTNAME="${CUSTOM_HOSTNAME}"
+TARGET_VERSION="${TARGET_VERSION}"
 EOF
 
-# 2. Create start-antigravity launcher using native agy binary
+echo "Downloading Antigravity language_server (v${TARGET_VERSION})..."
+
+TMP_DIR=$(mktemp -d)
+cd "$TMP_DIR"
+curl -sSL -o Antigravity.AppImage "$APPIMAGE_URL"
+chmod +x Antigravity.AppImage
+./Antigravity.AppImage --appimage-extract >/dev/null 2>&1
+
+cp squashfs-root/resources/bin/language_server /usr/local/bin/language_server
+chmod 755 /usr/local/bin/language_server
+cd / && rm -rf "$TMP_DIR"
+
+# 3. Create start-antigravity launcher
 cat << 'EOF' > /usr/local/bin/start-antigravity
 #!/bin/bash
 mkdir -p ~/.local/share/keyrings ~/.gemini/antigravity
@@ -63,32 +104,61 @@ pkill -f gnome-keyring-daemon || true
 eval $(echo "" | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null || true)
 export GNOME_KEYRING_CONTROL
 
-pkill -9 -f "agy" || true
-sleep 1
-
-DAEMON_ARGS=()
-
+# Handle Remote Control configuration in state file
+STATE_FILE="${HOME}/.gemini/antigravity/antigravity_state.pbtxt"
 if [ "$ENABLE_REMOTE_CONTROL" = "true" ]; then
-    DAEMON_ARGS+=("--remote-control")
+    if [ -f "$STATE_FILE" ]; then
+        if ! grep -q "remote_control_enabled" "$STATE_FILE"; then
+            echo "remote_control_enabled: true" >> "$STATE_FILE"
+        else
+            sed -i 's/remote_control_enabled: false/remote_control_enabled: true/g' "$STATE_FILE"
+        fi
+    else
+        echo "remote_control_enabled: true" > "$STATE_FILE"
+    fi
+
     if [ -n "$CUSTOM_HOSTNAME" ]; then
-        DAEMON_ARGS+=("--remote-control-name" "${CUSTOM_HOSTNAME}")
+        if ! grep -q "remote_control_hostname" "$STATE_FILE"; then
+            echo "remote_control_hostname: \"${CUSTOM_HOSTNAME}\"" >> "$STATE_FILE"
+        fi
     fi
 fi
 
+pkill -9 -f language_server || true
+sleep 1
+
+AGY_VERSION=$(cat /etc/antigravity/version 2>/dev/null || true)
+
+EXTRA_ARGS=()
 if [ "$ENABLE_LOCAL_INTERFACE" = "true" ]; then
-    DAEMON_ARGS+=("--hub" "--hub-port" "52425")
+    EXTRA_ARGS+=(
+      "--https_server_port" "52425"
+      "--http_server_port" "52424"
+      "--csrf_token" "devcontainer-secret"
+    )
 fi
 
-nohup /usr/local/bin/agy "${DAEMON_ARGS[@]}" > ~/.gemini/antigravity/agy.log 2>&1 &
+nohup /usr/local/bin/language_server \
+  --standalone \
+  --override_ide_name antigravity \
+  --subclient_type hub \
+  --override_ide_version "${AGY_VERSION}" \
+  --override_user_agent_name antigravity \
+  --app_data_dir antigravity \
+  --api_server_url https://generativelanguage.googleapis.com \
+  --cloud_code_endpoint https://cloudcode-pa.googleapis.com \
+  --persistent_mode \
+  --enable_sidecars \
+  "${EXTRA_ARGS[@]}" > ~/.gemini/antigravity/language_server.log 2>&1 &
 
-echo "Antigravity native daemon started (Local: ${ENABLE_LOCAL_INTERFACE}, Remote Control: ${ENABLE_REMOTE_CONTROL})"
+echo "Antigravity daemon v${AGY_VERSION} started (Local: ${ENABLE_LOCAL_INTERFACE}, Remote Control: ${ENABLE_REMOTE_CONTROL})"
 EOF
 chmod +x /usr/local/bin/start-antigravity
 ln -sf /usr/local/bin/start-antigravity /usr/local/bin/start-antigravity-remote
 
-# 3. Create profile autostart hook
+# 4. Create profile autostart hook
 cat << 'EOF' > /etc/profile.d/antigravity-autostart.sh
-if [ -x /usr/local/bin/start-antigravity ] && ! pgrep -x agy >/dev/null 2>&1; then
+if [ -x /usr/local/bin/start-antigravity ] && ! pgrep -x language_server >/dev/null 2>&1; then
     /usr/local/bin/start-antigravity >/dev/null 2>&1 &
 fi
 EOF
