@@ -1,6 +1,6 @@
 {
     "id": "antigravity",
-    "version": "1.6.0",
+    "version": "1.7.0",
     "name": "Antigravity Language Server",
     "description": "Installs the Google Antigravity language server daemon for remote devcontainer environments",
     "options": {
