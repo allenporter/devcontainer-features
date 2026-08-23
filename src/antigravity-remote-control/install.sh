@@ -2,7 +2,7 @@
 set -e
 
 echo "======================================================="
-echo " Installing Antigravity Remote Control Feature v1.3.0"
+echo " Installing Antigravity Remote Control Feature"
 echo "  Pure Native Google CLI Daemon (antigravity.google)"
 echo "======================================================="
 
