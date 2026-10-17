@@ -348,6 +348,7 @@ cat << 'EOF' > /usr/local/bin/start-antigravity
 set -e
 
 PERSISTENT_BIN="/workspaces/.persistent/bin"
+sudo chown vscode:vscode ~/.local ~/.local/share 2>/dev/null || true
 mkdir -p ~/.local/share/keyrings ~/.gemini/antigravity ~/.gemini/antigravity-cli ~/.local/bin "${PERSISTENT_BIN}"
 
 # Disable Microsoft's dummy systemctl shim if present so agy remote-control uses its native container fallback
@@ -435,7 +436,7 @@ HOST_BRIDGE_BIN="${PERSISTENT_BIN}/antigravity-host-bridge"
 if [ ! -x "${HOST_BRIDGE_BIN}" ]; then
     HOST_BRIDGE_BIN="/usr/local/bin/antigravity-host-bridge"
 fi
-if [ -x "${HOST_BRIDGE_BIN}" ] && ! fuser 52423/tcp >/dev/null 2>&1; then
+if [ -x "${HOST_BRIDGE_BIN}" ] && ! (fuser 52423/tcp >/dev/null 2>&1 || ss -tln 2>/dev/null | grep -q ':52423 '); then
     nohup "${HOST_BRIDGE_BIN}" >/tmp/antigravity-host-bridge.log 2>&1 &
 fi
 
