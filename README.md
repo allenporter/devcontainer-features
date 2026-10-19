@@ -6,8 +6,8 @@ Repository for custom DevContainer Features published to the internal Zot OCI re
 
 ## 🚀 Available Features
 
-### 1. `antigravity`
-Installs and launches the Google Antigravity 2.0 `language_server` daemon inside DevContainers with Linux D-Bus token persistence.
+### 1. `antigravity-remote-control`
+Installs and launches the Google Antigravity `language_server` Web Hub daemon alongside the official `agy` CLI inside DevContainers with persistent token synchronization.
 
 #### Usage in `.devcontainer/devcontainer.json`:
 
@@ -16,7 +16,7 @@ Installs and launches the Google Antigravity 2.0 `language_server` daemon inside
   "name": "My Workspace",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
   "features": {
-    "registry.k8s.mrv.thebends.org/devcontainers/antigravity:1": {}
+    "registry.k8s.mrv.thebends.org/devcontainers/antigravity-remote-control:1": {}
   },
   "postStartCommand": "/usr/local/bin/start-antigravity"
 }
@@ -47,17 +47,17 @@ agy-upgrade --restart  # Stage latest binaries and gracefully restart language_s
 
 ---
 
-## 🔑 Client Auth Helper (`bin/agy-auth`)
+## 🔑 Authentication Workflow (`agy auth login`)
 
-To automatically fetch the OAuth URL, open the browser, and start port-forwarding for any workspace:
-
-```bash
-./bin/agy-auth <workspace-name>
-
-# Example:
-./bin/agy-auth home-automation
-./bin/agy-auth harness-dev
-```
+1. **Authenticate via the CLI inside the container**:
+   ```bash
+   kubectl exec -it -n devcontainers deployment/ws-<workspace-name> -c workspace -- agy auth login
+   ```
+2. **Sync Token & Restart Daemon (`start-antigravity`)**:
+   On a fresh container where `~/.gemini/antigravity-cli/antigravity-oauth-token` did not exist at initial boot, run `start-antigravity` after completing `agy auth login` so the token symlinks are created in `~/.gemini/antigravity/` and `language_server` restarts with the new credentials:
+   ```bash
+   kubectl exec -n devcontainers deployment/ws-<workspace-name> -c workspace -- start-antigravity
+   ```
 
 ---
 
