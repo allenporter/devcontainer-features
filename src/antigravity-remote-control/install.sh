@@ -2,9 +2,11 @@
 set -e
 
 echo "======================================================="
-echo " Installing Antigravity Remote Control & Hub (v1.7.0)"
+echo " Installing Antigravity Remote Control & Hub (v1.8.0)"
 echo "  (Language Server + Native agy CLI + Self-Updater)"
 echo "======================================================="
+
+FEATURE_VERSION="1.8.0"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
@@ -38,6 +40,7 @@ fi
 
 mkdir -p /etc/antigravity
 echo "$TARGET_VERSION" > /etc/antigravity/version
+echo "$FEATURE_VERSION" > /etc/antigravity/feature-version
 
 TMP_DIR=$(mktemp -d)
 cd "$TMP_DIR"
@@ -351,14 +354,39 @@ PERSISTENT_BIN="/workspaces/.persistent/bin"
 sudo chown vscode:vscode ~/.local ~/.local/share 2>/dev/null || true
 mkdir -p ~/.local/share/keyrings ~/.gemini/antigravity ~/.gemini/antigravity-cli ~/.local/bin "${PERSISTENT_BIN}"
 
-# Disable Microsoft's dummy systemctl shim if present so agy remote-control uses its native container fallback
+# Disable inactive systemctl binaries in non-systemd containers so agy remote-control uses its native container fallback
 if [ -f /usr/local/bin/systemctl ] && grep -q "is not running in this container" /usr/local/bin/systemctl 2>/dev/null; then
     sudo mv /usr/local/bin/systemctl /usr/local/bin/systemctl.devcontainer-shim.bak 2>/dev/null || true
+fi
+if [ ! -d /run/systemd/system ] && [ -f /usr/bin/systemctl ] && [ ! -L /usr/bin/systemctl ]; then
+    sudo mv /usr/bin/systemctl /usr/bin/systemctl.systemd-inactive.bak 2>/dev/null || true
 fi
 
 # Make /usr/local/bin group-writable by vscode so agy update works without sudo
 sudo chgrp vscode /usr/local/bin 2>/dev/null || true
 sudo chmod 775 /usr/local/bin 2>/dev/null || true
+
+# Reconcile feature helper scripts when container image feature-version advances
+IMAGE_FEATURE_VER=$(cat /etc/antigravity/feature-version 2>/dev/null | tr -d '[:space:]' || echo "0.0.0")
+PERSIST_FEATURE_VER=$(cat "${PERSISTENT_BIN}/feature-version" 2>/dev/null | tr -d '[:space:]' || echo "0.0.0")
+HELPERS_UPDATED=0
+if [ -n "${IMAGE_FEATURE_VER}" ] && [ "${IMAGE_FEATURE_VER}" != "0.0.0" ]; then
+    HIGHEST_FEATURE_VER=$(printf '%s\n%s\n' "${IMAGE_FEATURE_VER}" "${PERSIST_FEATURE_VER}" | sort -V | tail -n 1)
+    if [ "${HIGHEST_FEATURE_VER}" = "${IMAGE_FEATURE_VER}" ] && [ "${IMAGE_FEATURE_VER}" != "${PERSIST_FEATURE_VER}" ]; then
+        for helper in agy-upgrade antigravity-host-bridge start-antigravity; do
+            if [ -f "/usr/local/bin/${helper}" ] && [ ! -L "/usr/local/bin/${helper}" ]; then
+                cp -f "/usr/local/bin/${helper}" "${PERSISTENT_BIN}/${helper}.tmp" && mv -f "${PERSISTENT_BIN}/${helper}.tmp" "${PERSISTENT_BIN}/${helper}"
+                chmod 755 "${PERSISTENT_BIN}/${helper}"
+                HELPERS_UPDATED=1
+            fi
+        done
+        echo "${IMAGE_FEATURE_VER}" > "${PERSISTENT_BIN}/feature-version"
+        if [ "${HELPERS_UPDATED}" = "1" ] && [ -x "${PERSISTENT_BIN}/start-antigravity" ]; then
+            pkill -f "antigravity-host-bridge" 2>/dev/null || true
+            exec "${PERSISTENT_BIN}/start-antigravity" "$@"
+        fi
+    fi
+fi
 
 # Reconcile image binaries vs persistent binaries (newest version wins)
 IMAGE_VER=$(cat /etc/antigravity/version 2>/dev/null | tr -d '[:space:]' || echo "0.0.0")
@@ -492,7 +520,39 @@ else
     echo "Error: language_server failed to start! Check ~/.gemini/antigravity/language_server.log"
     exit 1
 fi
+
+# When an OAuth token is present, ensure Web Hub onboarding is marked complete and
+# container-incompatible terminal sandbox is disabled on fresh setups so '/' does
+# not redirect back to '/onboarding'.
+if [ -f ~/.gemini/antigravity/antigravity-oauth-token ]; then
+    NEED_ONBOARDING_SYNC=0
+    if ! grep -q "AGENT_ONBOARDING_STATE_COMPLETED" ~/.gemini/antigravity/antigravity_state.pbtxt 2>/dev/null; then
+        NEED_ONBOARDING_SYNC=1
+    fi
+    NEED_SANDBOX_DISABLE=0
+    if ! grep -q '"permissionPreset"' ~/.gemini/config/config.json 2>/dev/null && ! grep -q '"enableTerminalSandbox"' ~/.gemini/config/config.json 2>/dev/null; then
+        NEED_SANDBOX_DISABLE=1
+    fi
+    if [ "${NEED_ONBOARDING_SYNC}" = "1" ] || [ "${NEED_SANDBOX_DISABLE}" = "1" ]; then
+        for i in {1..15}; do
+            if curl -fsS -m 1 http://127.0.0.1:52424/ >/dev/null 2>&1; then
+                break
+            fi
+            sleep 0.5
+        done
+        if [ "${NEED_SANDBOX_DISABLE}" = "1" ]; then
+            WRITE_PAYLOAD='{"appState":{"agentOnboardingCompleted":"AGENT_ONBOARDING_STATE_COMPLETED"},"userConfig":{"userSettings":{"enableTerminalSandbox":false,"permissionPreset":"AGENT_PERMISSION_PRESET_REQUEST_REVIEW","autoExecutionPolicy":"CASCADE_COMMANDS_AUTO_EXECUTION_OFF"}}}'
+        else
+            WRITE_PAYLOAD='{"appState":{"agentOnboardingCompleted":"AGENT_ONBOARDING_STATE_COMPLETED"}}'
+        fi
+        curl -fsS -m 5 -X POST "http://127.0.0.1:52424/exa.language_server_pb.LanguageServerService/JetboxWriteState" \
+            -H "Content-Type: application/json" \
+            -H "Connect-Protocol-Version: 1" \
+            -H "x-codeium-csrf-token: devcontainer-secret" \
+            -d "${WRITE_PAYLOAD}" >/dev/null 2>&1 || true
+    fi
+fi
 EOF
 chmod 755 /usr/local/bin/start-antigravity
 
-echo "Antigravity Remote Control & Hub Feature v1.7.0 installed successfully!"
+echo "Antigravity Remote Control & Hub Feature v1.8.0 installed successfully!"
