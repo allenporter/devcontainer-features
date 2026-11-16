@@ -2,11 +2,11 @@
 set -e
 
 echo "======================================================="
-echo " Installing Antigravity Remote Control & Hub (v1.8.0)"
+echo " Installing Antigravity Remote Control & Hub (v1.9.0)"
 echo "  (Language Server + Native agy CLI + Self-Updater)"
 echo "======================================================="
 
-FEATURE_VERSION="1.8.0"
+FEATURE_VERSION="1.9.0"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install -y --no-install-recommends \
@@ -41,6 +41,26 @@ fi
 mkdir -p /etc/antigravity
 echo "$TARGET_VERSION" > /etc/antigravity/version
 echo "$FEATURE_VERSION" > /etc/antigravity/feature-version
+
+# Persist DevContainer feature options for start-antigravity.
+# Guard against bash's built-in $HOSTNAME (container build ID) when hostname option is omitted.
+ENABLE_REMOTE_CONTROL="${ENABLEREMOTECONTROL:-${enableremotecontrol:-"true"}}"
+ENABLE_LOCAL_INTERFACE="${ENABLELOCALINTERFACE:-${enablelocalinterface:-"true"}}"
+CUSTOM_HOSTNAME=""
+if [ -f ./devcontainer-features.env ] && grep -q '^HOSTNAME=' ./devcontainer-features.env 2>/dev/null; then
+    CUSTOM_HOSTNAME="${HOSTNAME:-}"
+elif [ -n "${hostname:-}" ]; then
+    CUSTOM_HOSTNAME="${hostname}"
+elif [ -n "${HOSTNAME:-}" ] && [ "${HOSTNAME}" != "$(uname -n)" ]; then
+    CUSTOM_HOSTNAME="${HOSTNAME}"
+fi
+
+cat << EOF > /etc/antigravity/options.env
+ENABLE_REMOTE_CONTROL=$(printf '%q' "${ENABLE_REMOTE_CONTROL}")
+ENABLE_LOCAL_INTERFACE=$(printf '%q' "${ENABLE_LOCAL_INTERFACE}")
+CUSTOM_HOSTNAME=$(printf '%q' "${CUSTOM_HOSTNAME}")
+EOF
+chmod 644 /etc/antigravity/options.env
 
 TMP_DIR=$(mktemp -d)
 cd "$TMP_DIR"
@@ -485,10 +505,92 @@ if [ -n "$OLD_PIDS" ]; then
     fi
 fi
 
-# Ensure ports are released
-while fuser 52424/tcp >/dev/null 2>&1 || fuser 52425/tcp >/dev/null 2>&1; do
-    sleep 0.5
-done
+# Load build-time feature options with optional runtime environment overrides
+ENABLE_REMOTE_CONTROL="true"
+ENABLE_LOCAL_INTERFACE="true"
+CUSTOM_HOSTNAME=""
+if [ -f /etc/antigravity/options.env ]; then
+    # shellcheck disable=SC1091
+    source /etc/antigravity/options.env
+fi
+if [ -n "${ANTIGRAVITY_ENABLE_REMOTE_CONTROL:-}" ]; then
+    ENABLE_REMOTE_CONTROL="${ANTIGRAVITY_ENABLE_REMOTE_CONTROL}"
+fi
+if [ -n "${ANTIGRAVITY_ENABLE_LOCAL_INTERFACE:-}" ]; then
+    ENABLE_LOCAL_INTERFACE="${ANTIGRAVITY_ENABLE_LOCAL_INTERFACE}"
+fi
+if [ -n "${ANTIGRAVITY_HOSTNAME:-}" ]; then
+    CUSTOM_HOSTNAME="${ANTIGRAVITY_HOSTNAME}"
+fi
+
+RC_ENABLED_JSON="true"
+case "$(printf '%s' "${ENABLE_REMOTE_CONTROL}" | tr '[:upper:]' '[:lower:]')" in
+    false|0|no|off) RC_ENABLED_JSON="false" ;;
+esac
+
+HTTPS_PORT=52425
+HTTP_PORT=52424
+case "$(printf '%s' "${ENABLE_LOCAL_INTERFACE}" | tr '[:upper:]' '[:lower:]')" in
+    false|0|no|off)
+        HTTPS_PORT=0
+        HTTP_PORT=0
+        ;;
+esac
+
+# Stop standalone CLI remote-control daemon if Web Hub Remote Control is enabled
+# so antigravity.google.com never routes to a split-brain ~/.gemini/antigravity-cli store.
+if [ "${RC_ENABLED_JSON}" = "true" ] && pgrep -f "agy remote-control serve" >/dev/null 2>&1; then
+    echo "Stopping duplicate agy remote-control daemon to prevent split-brain routing..."
+    "${PERSISTENT_BIN}/agy" remote-control stop >/dev/null 2>&1 || pkill -15 -f "agy remote-control serve" 2>/dev/null || true
+fi
+
+reconcile_user_config() {
+    local cfg_dir="$HOME/.gemini/config"
+    local cfg_file="${cfg_dir}/config.json"
+    mkdir -p "${cfg_dir}"
+
+    local base_json="{}"
+    if [ -s "${cfg_file}" ]; then
+        if ! jq empty "${cfg_file}" >/dev/null 2>&1; then
+            echo "Warning: ${cfg_file} is not valid JSON; skipping config reconciliation" >&2
+            return 0
+        fi
+        base_json=$(cat "${cfg_file}")
+    fi
+
+    local updated_json
+    updated_json=$(printf '%s\n' "${base_json}" | jq \
+        --argjson rc_enabled "${RC_ENABLED_JSON}" \
+        --arg rc_host "${CUSTOM_HOSTNAME}" \
+        '
+        .userSettings = (.userSettings // {}) |
+        .userSettings.remoteControlEnabled = $rc_enabled |
+        if ($rc_host | length) > 0 then
+            .userSettings.remoteControlHostname = $rc_host |
+            .userSettings.cliRemoteControlHostname = $rc_host
+        else
+            .
+        end
+        ')
+
+    if [ ! -f "${cfg_file}" ] || [ "${updated_json}" != "${base_json}" ]; then
+        printf '%s\n' "${updated_json}" > "${cfg_file}.tmp"
+        chmod 600 "${cfg_file}.tmp"
+        mv -f "${cfg_file}.tmp" "${cfg_file}"
+    fi
+}
+
+# Reconcile existing config.json while language_server is stopped
+if [ -f ~/.gemini/config/config.json ]; then
+    reconcile_user_config
+fi
+
+# Ensure ports are released when local Web Hub interface is enabled
+if [ "${HTTP_PORT}" != "0" ]; then
+    while fuser "${HTTP_PORT}/tcp" >/dev/null 2>&1 || fuser "${HTTPS_PORT}/tcp" >/dev/null 2>&1; do
+        sleep 0.5
+    done
+fi
 
 AGY_VERSION=$(cat "${PERSISTENT_BIN}/version" 2>/dev/null || cat /etc/antigravity/version 2>/dev/null || echo "2.24.0")
 LS_BIN="${PERSISTENT_BIN}/language_server"
@@ -502,8 +604,8 @@ nohup "${LS_BIN}" \
   --subclient_type hub \
   --override_ide_version "${AGY_VERSION}" \
   --override_user_agent_name antigravity \
-  --https_server_port 52425 \
-  --http_server_port 52424 \
+  --https_server_port "${HTTPS_PORT}" \
+  --http_server_port "${HTTP_PORT}" \
   --csrf_token devcontainer-secret \
   --host_bridge_url http://127.0.0.1:52423 \
   --host_bridge_token devcontainer-host-bridge-secret \
@@ -515,7 +617,7 @@ nohup "${LS_BIN}" \
 sleep 2
 NEW_PID=$(pgrep -f "language_server.*--standalone" || true)
 if [ -n "$NEW_PID" ] && kill -0 $NEW_PID 2>/dev/null; then
-    echo "Antigravity Hub daemon v${AGY_VERSION} successfully started (PID: ${NEW_PID}) on port 52424 (HTTPS 52425)"
+    echo "Antigravity Hub daemon v${AGY_VERSION} successfully started (PID: ${NEW_PID}) on port ${HTTP_PORT} (HTTPS ${HTTPS_PORT})"
 else
     echo "Error: language_server failed to start! Check ~/.gemini/antigravity/language_server.log"
     exit 1
@@ -524,7 +626,7 @@ fi
 # When an OAuth token is present, ensure Web Hub onboarding is marked complete and
 # container-incompatible terminal sandbox is disabled on fresh setups so '/' does
 # not redirect back to '/onboarding'.
-if [ -f ~/.gemini/antigravity/antigravity-oauth-token ]; then
+if [ -f ~/.gemini/antigravity/antigravity-oauth-token ] && [ "${HTTP_PORT}" != "0" ]; then
     NEED_ONBOARDING_SYNC=0
     if ! grep -q "AGENT_ONBOARDING_STATE_COMPLETED" ~/.gemini/antigravity/antigravity_state.pbtxt 2>/dev/null; then
         NEED_ONBOARDING_SYNC=1
@@ -535,7 +637,7 @@ if [ -f ~/.gemini/antigravity/antigravity-oauth-token ]; then
     fi
     if [ "${NEED_ONBOARDING_SYNC}" = "1" ] || [ "${NEED_SANDBOX_DISABLE}" = "1" ]; then
         for i in {1..15}; do
-            if curl -fsS -m 1 http://127.0.0.1:52424/ >/dev/null 2>&1; then
+            if curl -fsS -m 1 "http://127.0.0.1:${HTTP_PORT}/" >/dev/null 2>&1; then
                 break
             fi
             sleep 0.5
@@ -545,14 +647,18 @@ if [ -f ~/.gemini/antigravity/antigravity-oauth-token ]; then
         else
             WRITE_PAYLOAD='{"appState":{"agentOnboardingCompleted":"AGENT_ONBOARDING_STATE_COMPLETED"}}'
         fi
-        curl -fsS -m 5 -X POST "http://127.0.0.1:52424/exa.language_server_pb.LanguageServerService/JetboxWriteState" \
+        curl -fsS -m 5 -X POST "http://127.0.0.1:${HTTP_PORT}/exa.language_server_pb.LanguageServerService/JetboxWriteState" \
             -H "Content-Type: application/json" \
             -H "Connect-Protocol-Version: 1" \
             -H "x-codeium-csrf-token: devcontainer-secret" \
             -d "${WRITE_PAYLOAD}" >/dev/null 2>&1 || true
     fi
 fi
+
+# Ensure remoteControlEnabled and remoteControlHostname are persisted in config.json
+# (including on brand-new workspaces right after JetboxWriteState initializes config.json).
+reconcile_user_config
 EOF
 chmod 755 /usr/local/bin/start-antigravity
 
-echo "Antigravity Remote Control & Hub Feature v1.8.0 installed successfully!"
+echo "Antigravity Remote Control & Hub Feature v1.9.0 installed successfully!"

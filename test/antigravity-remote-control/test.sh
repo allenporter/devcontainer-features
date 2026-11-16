@@ -9,5 +9,7 @@ check "agy CLI is installed" which agy
 check "agy-upgrade helper is installed" which agy-upgrade
 check "antigravity-host-bridge helper is installed" which antigravity-host-bridge
 check "start-antigravity launcher is installed" which start-antigravity
+check "start-antigravity syntax is valid" bash -n /usr/local/bin/start-antigravity
+check "feature options persisted to /etc/antigravity/options.env" test -f /etc/antigravity/options.env
 
 reportResults
